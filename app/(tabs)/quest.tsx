@@ -1,13 +1,13 @@
 import React, { useState, useRef, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, TextInput,
-  StyleSheet, Dimensions, FlatList, ActivityIndicator,
+  StyleSheet, Dimensions, FlatList, ActivityIndicator, Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   MapPin, Users, Target, ChevronRight, KeyRound,
-  CheckCircle, Shield, Sword, Lock,
+  CheckCircle, Shield, Sword, Lock, X, Calendar, Sparkles,
 } from 'lucide-react-native';
 import { generateQuest } from '@/lib/ai';
 import { useQuest } from '@/lib/questContext';
@@ -24,7 +24,23 @@ const DIFFICULTY_CONFIG = {
 
 type Difficulty = keyof typeof DIFFICULTY_CONFIG;
 
-// ─── Shared location helper ───────────────────────────────────────────────────
+// ─── Daily bounty titles — rotate by day of year ─────────────────────────────
+const DAILY_BOUNTIES = [
+  { title: "The Pantheon's Shadow Walk", xp: 500 },
+  { title: "Echoes of the Forum", xp: 500 },
+  { title: "Arches of the Empire", xp: 500 },
+  { title: "Lantern of the Lost Lighthouse", xp: 500 },
+  { title: "Bridges Across Time", xp: 500 },
+  { title: "Walls That Speak", xp: 500 },
+  { title: "The Colosseum's Roar", xp: 500 },
+];
+
+function getDailyBounty() {
+  const dayOfYear = Math.floor(
+    (Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86_400_000
+  );
+  return DAILY_BOUNTIES[dayOfYear % DAILY_BOUNTIES.length];
+}
 
 async function getLocationContext() {
   let lat: number | null = null;
@@ -44,12 +60,10 @@ async function getLocationContext() {
       }
     }
   } catch (e) {
-    console.warn('[RELICA] Location failed for quest:', e);
+    console.warn('[RELICA] Location failed:', e);
   }
   return { lat, lng, city, country };
 }
-
-// ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function QuestHub() {
   const router = useRouter();
@@ -61,10 +75,11 @@ export default function QuestHub() {
     leaveRoom: ctxLeaveRoom, players, broadcastQuest, joinTeam,
   } = useQuest();
 
-  const [activeTab, setActiveTab] = useState(0); // 0=solo, 1=group, 2=1v1
+  const [activeTab, setActiveTab] = useState(0);
   const [pinCode, setPinCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [difficulty, setDifficulty] = useState<Difficulty>('scholar');
+  const [isHost, setIsHost] = useState(false); // track if user created the room
   const flatListRef = useRef<FlatList>(null);
 
   const TABS = useMemo(() => [
@@ -72,6 +87,8 @@ export default function QuestHub() {
     { id: 'group', label: t('group'),   Icon: Users  },
     { id: '1v1',   label: t('onevone'), Icon: Lock   },
   ], [language]);
+
+  const dailyBounty = getDailyBounty();
 
   const onTabPress = (idx: number) => {
     setActiveTab(idx);
@@ -92,12 +109,12 @@ export default function QuestHub() {
       const quest = await generateQuest(lat, lng, city, country, language);
       const mult = difficulty === 'historian' ? 2 : difficulty === 'novice' ? 0.5 : 1;
       quest.total_xp = Math.round(quest.total_xp * mult);
-      quest.tasks.forEach(task => { task.xp_reward = Math.round(task.xp_reward * mult); });
+      quest.tasks.forEach((task: any) => { task.xp_reward = Math.round(task.xp_reward * mult); });
       setActiveQuest(quest);
       setQuestTimeLeft(quest.duration_minutes * 60);
       router.push('/(tabs)/map');
     } catch (e) {
-      alert(t('questGenFailed'));
+      Alert.alert('Error', t('questGenFailed'));
     } finally {
       setLoading(false);
     }
@@ -113,34 +130,71 @@ export default function QuestHub() {
       broadcastQuest(quest);
       router.push('/(tabs)/map');
     } catch (e) {
-      alert(t('questGenFailed'));
+      Alert.alert('Error', t('questGenFailed'));
     } finally {
       setLoading(false);
     }
   };
 
   const joinRoom = () => {
-    if (pinCode.length === 4) ctxJoinRoom(pinCode);
-    else alert(t('validPinAlert'));
+    if (pinCode.length === 4) {
+      ctxJoinRoom(pinCode);
+      setIsHost(false);
+    } else {
+      Alert.alert('Invalid PIN', t('validPinAlert'));
+    }
   };
 
   const createRoom = () => {
     const pin = ctxCreateRoom();
-    alert(t('roomCreatedAlert', { pin }));
+    setIsHost(true);
+    Alert.alert('Room Created', t('roomCreatedAlert', { pin }));
   };
 
-  // ─── Lobby View (when in a room) ────────────────────────────────────────────
+  const handleLeaveOrCancel = () => {
+    const title = isHost ? 'Cancel Room' : 'Leave Room';
+    const message = isHost
+      ? 'Cancelling will remove all players from the room.'
+      : 'Are you sure you want to leave this room?';
+    const btnLabel = isHost ? 'Cancel Room' : 'Leave';
 
+    Alert.alert(title, message, [
+      { text: 'Stay', style: 'cancel' },
+      {
+        text: btnLabel,
+        style: 'destructive',
+        onPress: () => {
+          ctxLeaveRoom();
+          setIsHost(false);
+        },
+      },
+    ]);
+  };
+
+  // ─── Lobby View ──────────────────────────────────────────────────────────────
   if (globalRoomPin) {
     const playersArr = Object.values(players);
-    const teamA = playersArr.filter(p => p.team === 'A');
-    const teamB = playersArr.filter(p => p.team === 'B');
+    const teamA = playersArr.filter((p: any) => p.team === 'A');
+    const teamB = playersArr.filter((p: any) => p.team === 'B');
 
     return (
-      <View style={[lobbyStyles.container, { paddingTop: insets.top + 20 }]}>
-        <Text style={lobbyStyles.title}>{t('lobby', { pin: globalRoomPin })}</Text>
-        <Text style={lobbyStyles.sub}>{t('waitingExplorers')}</Text>
+      <View style={[lobbyStyles.container, { paddingTop: insets.top + 16 }]}>
+        {/* PIN header */}
+        <View style={lobbyStyles.headerRow}>
+          <View>
+            <Text style={lobbyStyles.title}>{t('lobby', { pin: globalRoomPin })}</Text>
+            <Text style={lobbyStyles.sub}>{t('waitingExplorers')}</Text>
+          </View>
+          {/* Cancel / Leave button — top right, always visible */}
+          <TouchableOpacity onPress={handleLeaveOrCancel} style={lobbyStyles.cancelBtn}>
+            <X size={16} color={isHost ? '#ff4444' : '#9a9483'} />
+            <Text style={[lobbyStyles.cancelBtnText, isHost && { color: '#ff4444' }]}>
+              {isHost ? 'Cancel' : 'Leave'}
+            </Text>
+          </TouchableOpacity>
+        </View>
 
+        {/* Team selection — moved up */}
         <View style={lobbyStyles.teamsRow}>
           <TouchableOpacity onPress={() => joinTeam('A')} style={[lobbyStyles.teamBtn, { borderColor: '#3498db55', backgroundColor: '#3498db11' }]}>
             <Shield size={20} color="#3498db" />
@@ -152,11 +206,27 @@ export default function QuestHub() {
           </TouchableOpacity>
         </View>
 
+        {/* Start Expedition button — pushed up, before player list */}
+        {isHost && (
+          <TouchableOpacity
+            style={[lobbyStyles.startBtn, loading && { opacity: 0.6 }]}
+            onPress={startGroupQuest}
+            disabled={loading}
+          >
+            {loading
+              ? <ActivityIndicator color="#000" />
+              : <Text style={lobbyStyles.startBtnText}>{t('startExpedition')}</Text>
+            }
+            <ChevronRight size={18} color="#000" />
+          </TouchableOpacity>
+        )}
+
+        {/* Player list */}
         <ScrollView style={lobbyStyles.playerList} contentContainerStyle={{ padding: 16, gap: 14 }}>
-          {playersArr.map((p, i) => (
+          {playersArr.map((p: any, i: number) => (
             <View key={p.id} style={lobbyStyles.playerRow}>
               <View style={[lobbyStyles.playerAvatar, {
-                borderColor: p.team === 'A' ? '#3498db' : p.team === 'B' ? '#e74c3c' : '#c9a84c'
+                borderColor: p.team === 'A' ? '#3498db' : p.team === 'B' ? '#e74c3c' : '#c9a84c',
               }]}>
                 <Text style={{ color: p.team === 'A' ? '#3498db' : p.team === 'B' ? '#e74c3c' : '#c9a84c', fontWeight: 'bold' }}>
                   {p.name.charAt(0)}
@@ -173,29 +243,17 @@ export default function QuestHub() {
               )}
             </View>
           ))}
+          {playersArr.length === 0 && (
+            <Text style={{ color: '#555', fontSize: 13, textAlign: 'center', marginTop: 20 }}>
+              Waiting for players to join…
+            </Text>
+          )}
         </ScrollView>
-
-        <TouchableOpacity
-          style={[lobbyStyles.startBtn, loading && { opacity: 0.6 }]}
-          onPress={startGroupQuest}
-          disabled={loading}
-        >
-          {loading
-            ? <ActivityIndicator color="#000" />
-            : <Text style={lobbyStyles.startBtnText}>{t('startExpedition')}</Text>
-          }
-          <ChevronRight size={18} color="#000" />
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={ctxLeaveRoom} style={lobbyStyles.leaveBtn}>
-          <Text style={lobbyStyles.leaveBtnText}>{t('leaveRoom')}</Text>
-        </TouchableOpacity>
       </View>
     );
   }
 
   // ─── Main Hub ────────────────────────────────────────────────────────────────
-
   const cfg = DIFFICULTY_CONFIG[difficulty];
 
   return (
@@ -204,7 +262,7 @@ export default function QuestHub() {
       <Text style={hubStyles.sub}>{t('questHubDesc')}</Text>
 
       {/* Active Quest Banner */}
-      {activeQuest ? (
+      {activeQuest && (
         <View style={hubStyles.activeBanner}>
           <View style={{ flex: 1, marginRight: 12 }}>
             <Text style={hubStyles.activeBannerLabel}>Current Quest</Text>
@@ -214,20 +272,6 @@ export default function QuestHub() {
             <Text style={hubStyles.activeBannerBtnText}>View Map</Text>
           </TouchableOpacity>
         </View>
-      ) : (
-        <TouchableOpacity
-          onPress={startSoloQuest}
-          disabled={loading}
-          style={hubStyles.dailyBounty}
-        >
-          <View style={{ flex: 1, paddingRight: 16 }}>
-            <Text style={hubStyles.dailyLabel}>{t('dailyBounty')} • 500 XP</Text>
-            <Text style={hubStyles.dailyTitle}>The Pantheon's Shadow Walk</Text>
-          </View>
-          <View style={hubStyles.dailyArrow}>
-            <ChevronRight size={20} color="#000" />
-          </View>
-        </TouchableOpacity>
       )}
 
       {/* Tab Bar */}
@@ -259,7 +303,40 @@ export default function QuestHub() {
 
             {/* ── SOLO TAB ── */}
             {index === 0 && (
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 16, paddingBottom: 120 }}>
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 14, paddingBottom: 120 }}>
+
+                {/* ── DAILY BOUNTY (fixed) ── */}
+                <View style={soloStyles.sectionHeader}>
+                  <Calendar size={14} color="#c9a84c" />
+                  <Text style={soloStyles.sectionLabel}>Daily Bounty</Text>
+                  <View style={soloStyles.dailyPill}>
+                    <Text style={soloStyles.dailyPillText}>Resets in {24 - new Date().getHours()}h</Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  onPress={startSoloQuest}
+                  disabled={loading}
+                  style={soloStyles.dailyCard}
+                >
+                  <View style={soloStyles.dailyLeft}>
+                    <Text style={soloStyles.dailyEmoji}>📜</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={soloStyles.dailyTitle}>{dailyBounty.title}</Text>
+                      <Text style={soloStyles.dailyMeta}>+{dailyBounty.xp} XP · Location-based</Text>
+                    </View>
+                  </View>
+                  <View style={soloStyles.dailyArrow}>
+                    {loading ? <ActivityIndicator color="#000" size="small" /> : <ChevronRight size={18} color="#000" />}
+                  </View>
+                </TouchableOpacity>
+
+                {/* ── GENERATED QUEST ── */}
+                <View style={soloStyles.sectionHeader}>
+                  <Sparkles size={14} color={cfg.color} />
+                  <Text style={[soloStyles.sectionLabel, { color: cfg.color }]}>Generated Quest</Text>
+                </View>
+
                 {/* Difficulty selector */}
                 <View style={soloStyles.diffRow}>
                   {(Object.keys(DIFFICULTY_CONFIG) as Difficulty[]).map(d => {
@@ -307,7 +384,7 @@ export default function QuestHub() {
                 {activeQuest && (
                   <View style={soloStyles.taskList}>
                     <Text style={soloStyles.taskListTitle}>Active Tasks</Text>
-                    {activeQuest.tasks.map(task => (
+                    {activeQuest.tasks.map((task: any) => (
                       <View key={task.id} style={soloStyles.taskRow}>
                         <View style={[soloStyles.taskDot, task.completed && soloStyles.taskDotDone]}>
                           {task.completed && <CheckCircle size={10} color="#000" />}
@@ -356,14 +433,12 @@ export default function QuestHub() {
                   </View>
                 </View>
 
-                {/* Divider */}
                 <View style={multiStyles.divider}>
                   <View style={multiStyles.dividerLine} />
                   <Text style={multiStyles.dividerText}>OR</Text>
                   <View style={multiStyles.dividerLine} />
                 </View>
 
-                {/* Create Room */}
                 <View style={multiStyles.card}>
                   <Text style={multiStyles.cardTitle}>{item.id === 'group' ? t('hostGroup') : t('host1v1')}</Text>
                   <Text style={multiStyles.cardDesc}>{t('hostGroupDesc')}</Text>
@@ -393,10 +468,6 @@ const hubStyles = StyleSheet.create({
   activeBannerTitle: { color: '#f0ece0', fontSize: 17, fontFamily: 'Georgia' },
   activeBannerBtn: { backgroundColor: '#c9a84c', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 14 },
   activeBannerBtnText: { color: '#000', fontWeight: '900', fontSize: 11 },
-  dailyBounty: { backgroundColor: 'rgba(201,168,76,0.08)', borderWidth: 1, borderColor: 'rgba(201,168,76,0.25)', borderRadius: 20, padding: 18, flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
-  dailyLabel: { color: '#c9a84c', fontSize: 9, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 2, marginBottom: 4 },
-  dailyTitle: { color: '#f0ece0', fontSize: 17, fontFamily: 'Georgia' },
-  dailyArrow: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#c9a84c', alignItems: 'center', justifyContent: 'center' },
 });
 
 const tabStyles = StyleSheet.create({
@@ -408,6 +479,16 @@ const tabStyles = StyleSheet.create({
 });
 
 const soloStyles = StyleSheet.create({
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: -4 },
+  sectionLabel: { color: '#c9a84c', fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 2, flex: 1 },
+  dailyPill: { backgroundColor: 'rgba(201,168,76,0.12)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(201,168,76,0.2)' },
+  dailyPillText: { color: '#9a9483', fontSize: 8, fontWeight: '900' },
+  dailyCard: { backgroundColor: '#1a1a1a', borderRadius: 20, padding: 18, borderWidth: 1, borderColor: 'rgba(201,168,76,0.2)', flexDirection: 'row', alignItems: 'center', gap: 14 },
+  dailyLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  dailyEmoji: { fontSize: 32 },
+  dailyTitle: { color: '#f0ece0', fontSize: 15, fontFamily: 'Georgia', marginBottom: 4 },
+  dailyMeta: { color: '#9a9483', fontSize: 10, fontWeight: '600' },
+  dailyArrow: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#c9a84c', alignItems: 'center', justifyContent: 'center' },
   diffRow: { flexDirection: 'row', gap: 8 },
   diffBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 14, borderRadius: 16, borderWidth: 1.5, borderColor: '#2a2a2a', backgroundColor: '#1a1a1a' },
   diffLabel: { color: '#9a9483', fontSize: 9, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1 },
@@ -450,11 +531,16 @@ const multiStyles = StyleSheet.create({
 
 const lobbyStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0e0e0e', paddingHorizontal: 20 },
-  title: { color: '#c9a84c', fontSize: 30, fontFamily: 'Georgia', marginBottom: 4 },
-  sub: { color: '#9a9483', fontSize: 14, marginBottom: 20 },
-  teamsRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 },
+  title: { color: '#c9a84c', fontSize: 28, fontFamily: 'Georgia', marginBottom: 4 },
+  sub: { color: '#9a9483', fontSize: 13, marginBottom: 0 },
+  cancelBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, marginTop: 6 },
+  cancelBtnText: { color: '#9a9483', fontWeight: '800', fontSize: 12 },
+  teamsRow: { flexDirection: 'row', gap: 12, marginBottom: 14 },
   teamBtn: { flex: 1, borderWidth: 1, borderRadius: 16, padding: 14, alignItems: 'center', gap: 6 },
   teamText: { fontWeight: '800', fontSize: 13 },
+  startBtn: { height: 56, backgroundColor: '#c9a84c', borderRadius: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 14 },
+  startBtnText: { color: '#000', fontWeight: '900', fontSize: 14 },
   playerList: { flex: 1, backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 20, marginBottom: 14 },
   playerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   playerAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(201,168,76,0.08)', borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
@@ -462,8 +548,4 @@ const lobbyStyles = StyleSheet.create({
   playerTeam: { fontSize: 9, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginTop: 2 },
   hostBadge: { backgroundColor: '#c9a84c', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   hostText: { color: '#000', fontSize: 8, fontWeight: '900', letterSpacing: 1 },
-  startBtn: { height: 58, backgroundColor: '#c9a84c', borderRadius: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 },
-  startBtnText: { color: '#000', fontWeight: '900', fontSize: 14 },
-  leaveBtn: { alignItems: 'center', paddingBottom: 24 },
-  leaveBtnText: { color: '#ff4444', fontWeight: '700', fontSize: 14 },
 });

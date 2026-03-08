@@ -4,30 +4,55 @@ export const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions
 export const OPENROUTER_API_KEY = process.env.EXPO_PUBLIC_OPENROUTER_API_KEY || '';
 
 /**
- * Model Priority List — updated March 2026.
- * Vision-capable models are used for image analysis.
- * Text models for quest gen, Q&A, verification text.
- * Each list ordered by quality → cost → fallback.
+ * Verified free model lists — March 2026.
+ * All models confirmed $0 on OpenRouter as of March 7, 2026.
+ * Source: costgoat.com/pricing/openrouter-free-models (27 free models listed)
+ *
+ * TEXT_MODELS — ordered fastest → most capable:
+ *   - llama-3.2-3b    : tiny, ~1-2s, confirmed free ✓
+ *   - liquid/lfm-1.2b : tiny instruct, ~1-2s, confirmed free ✓
+ *   - gemma-3-4b      : fast + vision, confirmed free ✓
+ *   - nvidia nemotron-9b: tools support, confirmed free ✓
+ *   - llama-3.3-70b   : best quality text, confirmed free ✓
+ *   - mistral-small   : solid fallback, confirmed free ✓
+ *   - gemma-3-27b     : last resort text, confirmed free ✓
+ *
+ * VISION_MODELS — must support image input:
+ *   - gemma-3-4b      : smallest vision model, confirmed free ✓
+ *   - gemma-3-12b     : mid vision, confirmed free ✓
+ *   - nvidia/nemotron-nano-12b-vl : vision + tools, confirmed free ✓
+ *   - mistral-small   : vision + tools, confirmed free ✓
+ *   - gemma-3-27b     : highest quality vision, confirmed free ✓
+ *
+ * REMOVED (not in current free list):
+ *   - microsoft/phi-3-mini → NOT free on OpenRouter anymore
+ *   - meta-llama/llama-3.2-11b-vision → replaced by nemotron-12b-vl
+ *   - qwen3-thinking variants → too slow (reasoning overhead)
+ *   - openrouter/auto → non-deterministic, unpredictable latency
  */
-export const VISION_MODELS: string[] = [
-  'google/gemma-3-27b-it:free',              // ~8s, no thinking overhead
-  'mistralai/mistral-small-3.1-24b-instruct:free', // ~10s fallback
-  'google/gemma-3-12b-it:free',              // ~6s smaller fallback
-  'qwen/qwen3-vl-30b-a3b-thinking',          // slow reasoning, last resort
-  'google/gemma-3-4b-it:free',
-  'openrouter/auto',
+
+// ── TEXT: fastest first ──────────────────────────────────────────────────────
+export const TEXT_MODELS: string[] = [
+  'meta-llama/llama-3.2-3b-instruct:free',        // ~1-2s — smallest, great JSON
+  'liquid/lfm-2.5-1.2b-instruct:free',            // ~1-2s — ultra tiny, fast
+  'google/gemma-3-4b-it:free',                    // ~2-3s — small Gemma, reliable
+  'nvidia/nemotron-nano-9b-v2:free',              // ~3-4s — tools support, solid
+  'google/gemma-3-12b-it:free',                   // ~4-6s — mid-size fallback
+  'meta-llama/llama-3.3-70b-instruct:free',       // ~6-10s — best free text quality
+  'mistralai/mistral-small-3.1-24b-instruct:free',// ~5-8s — solid European fallback
+  'google/gemma-3-27b-it:free',                   // ~8-12s — last resort
 ];
 
-export const TEXT_MODELS: string[] = [
-  'google/gemma-3-27b-it:free',
-  'mistralai/mistral-small-3.1-24b-instruct:free',
-  'google/gemma-3-12b-it:free',
-  'qwen/qwen3-vl-30b-a3b-thinking',
-  'openrouter/auto',
+// ── VISION: image-capable models only ────────────────────────────────────────
+export const VISION_MODELS: string[] = [
+  'google/gemma-3-4b-it:free',                    // ~3-5s — fastest vision, confirmed free
+  'google/gemma-3-12b-it:free',                   // ~5-7s — mid vision quality
+  'nvidia/nemotron-nano-12b-v2-vl:free',          // ~5-8s — vision + tools, NVIDIA
+  'mistralai/mistral-small-3.1-24b-instruct:free',// ~6-10s — vision + tools
+  'google/gemma-3-27b-it:free',                   // ~9-14s — best free vision quality
 ];
 
 // ─── In-memory response cache ─────────────────────────────────────────────────
-// Prevent identical requests from hitting the API multiple times per session.
 const responseCache = new Map<string, string>();
 
 function getCacheKey(model: string, messages: unknown[]): string {
@@ -57,7 +82,7 @@ export interface MonumentResult {
   cultural_context?: string;
   architectural_details?: string;
   style_explanation?: string;
-  significance_score?: number; // 1-10 rarity/importance score
+  significance_score?: number;
   details: MonumentDetails;
 }
 
@@ -87,234 +112,192 @@ interface OpenRouterMessage {
   content: string | OpenRouterContentPart[];
 }
 
-// ─── Core fetch helper ────────────────────────────────────────────────────────
+// ─── Core fetch — single model call ──────────────────────────────────────────
 
-const RETRY_DELAY_MS = 400;
+async function fetchModel(
+  model: string,
+  messages: OpenRouterMessage[],
+  maxTokens: number,
+  jsonMode: boolean,
+  signal?: AbortSignal,
+): Promise<string> {
+  const body: Record<string, unknown> = {
+    model,
+    messages,
+    max_tokens: maxTokens,
+    temperature: 0.7,
+  };
+  if (jsonMode) body.response_format = { type: 'json_object' };
 
-async function sleep(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  const response = await fetch(OPENROUTER_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+      'HTTP-Referer': 'https://relica.expo.app',
+      'X-Title': 'RELICA',
+    },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+  const data = await response.json();
+  if (data.error) throw new Error(data.error.message);
+
+  const content: string | undefined = data.choices?.[0]?.message?.content;
+  if (!content?.trim()) throw new Error('Empty response');
+
+  return content;
 }
 
-/**
- * Tries each model in order, with caching and exponential backoff on failure.
- * Returns the raw string content from the winning model.
- */
+// ─── RACE strategy: fire top N models simultaneously, take the first winner ───
+//
+// This is the biggest speed improvement. Instead of trying models one-by-one
+// (sequential — slow), we fire the top 3 at once and cancel the losers.
+// If any of the fast small models responds in 2s, we never wait for the 10s ones.
+
 async function callOpenRouter(
   models: string[],
   messages: OpenRouterMessage[],
   jsonMode = false,
-  maxTokens = 3200
+  maxTokens = 800,
+  raceCount = 3,          // how many models to fire simultaneously
 ): Promise<string> {
-  let lastError: Error = new Error('All models failed.');
-
-  for (let i = 0; i < models.length; i++) {
-    const model = models[i];
-    const cacheKey = getCacheKey(model, messages);
-
-    // 1. Check in-memory cache
-    if (responseCache.has(cacheKey)) {
+  // 1. Check cache first (instant)
+  for (const model of models.slice(0, raceCount)) {
+    const cached = responseCache.get(getCacheKey(model, messages));
+    if (cached) {
       console.log(`[RELICA] ✓ Cache hit: ${model}`);
-      return responseCache.get(cacheKey)!;
-    }
-
-    // 2. Exponential backoff wait after first failure
-    if (i > 0) await sleep(RETRY_DELAY_MS * i);
-
-    try {
-      console.log(`[RELICA] Trying: ${model}`);
-
-      const body: Record<string, unknown> = {
-        model,
-        messages,
-        max_tokens: maxTokens,
-        temperature: 0.7,
-      };
-
-      if (jsonMode) {
-        body.response_format = { type: 'json_object' };
-      }
-
-      const response = await fetch(OPENROUTER_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-          'HTTP-Referer': 'https://relica.expo.app',
-          'X-Title': 'RELICA',
-        },
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        console.warn(`[RELICA] HTTP ${response.status} from ${model}: ${errText.slice(0, 120)}`);
-        lastError = new Error(`HTTP ${response.status}`);
-        continue;
-      }
-
-      const data = await response.json();
-
-      if (data.error) {
-        console.warn(`[RELICA] ${model} API error → ${data.error.message}`);
-        lastError = new Error(data.error.message);
-        continue;
-      }
-
-      const content: string | undefined = data.choices?.[0]?.message?.content;
-
-      if (!content || content.trim() === '') {
-        console.warn(`[RELICA] ${model} → empty response`);
-        continue;
-      }
-
-      console.log(`[RELICA] ✓ Success: ${model} (${content.length} chars)`);
-
-      // 3. Cache the response
-      responseCache.set(cacheKey, content);
-
-      return content;
-    } catch (err: any) {
-      console.error(`[RELICA] Network error (${model}): ${err.message}`);
-      lastError = err;
+      return cached;
     }
   }
 
-  throw lastError;
+  // 2. Race the top N models — first valid response wins
+  const controllers = models.slice(0, raceCount).map(() => new AbortController());
+
+  const racePromises = models.slice(0, raceCount).map((model, i) =>
+    fetchModel(model, messages, maxTokens, jsonMode, controllers[i].signal)
+      .then(content => {
+        console.log(`[RELICA] ✓ Race winner: ${model}`);
+        // Cancel all other in-flight requests
+        controllers.forEach((c, j) => { if (j !== i) c.abort(); });
+        // Cache the winner
+        responseCache.set(getCacheKey(model, messages), content);
+        return content;
+      })
+  );
+
+  try {
+    // Promise.any = resolves with FIRST success, ignores individual failures
+    return await Promise.any(racePromises);
+  } catch {
+    // All top-N failed — fall back to remaining models sequentially
+    console.warn(`[RELICA] Race failed, trying fallback models...`);
+    for (const model of models.slice(raceCount)) {
+      try {
+        const content = await fetchModel(model, messages, maxTokens, jsonMode);
+        responseCache.set(getCacheKey(model, messages), content);
+        console.log(`[RELICA] ✓ Fallback winner: ${model}`);
+        return content;
+      } catch (err: any) {
+        console.warn(`[RELICA] ${model} failed: ${err.message}`);
+      }
+    }
+    throw new Error('All models failed.');
+  }
 }
 
 // ─── JSON Extraction Helper ───────────────────────────────────────────────────
 
 function extractJSON<T>(raw: string): T | null {
-  // Strip markdown fences
   let cleaned = raw
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
     .replace(/^```json\s*/i, '')
     .replace(/^```\s*/i, '')
     .replace(/```\s*$/i, '')
     .trim();
 
-  // Strip CDATA-like <think>...</think> reasoning blocks some models emit
-  cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-
   try {
     return JSON.parse(cleaned) as T;
   } catch {
-    // Last resort: grab the first JSON object/array in the response
     const match = cleaned.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
     if (match) {
-      try {
-        return JSON.parse(match[0]) as T;
-      } catch { /* fall through */ }
+      try { return JSON.parse(match[0]) as T; } catch { /* fall through */ }
     }
     return null;
   }
 }
 
 // ─── Monument Identification ──────────────────────────────────────────────────
+// Prompt trimmed significantly — shorter = faster response from model
 
-const IDENTIFICATION_SYSTEM_PROMPT = `
-You are a world-class authority on art history, architecture, cultural landmarks, and heritage sites.
+const IDENTIFICATION_SYSTEM_PROMPT = `You are an expert in world architecture, monuments, and cultural heritage.
 
-The user will send you a photo of: a monument, landmark, historical building, OR an architectural style (e.g. Haussmannian Paris, Brutalist library, Victorian terrace).
-
-Your twin goals:
-1. IDENTIFY the exact landmark, building, or architectural style with maximum precision.
-2. NARRATE its story in rich, engaging prose that would captivate a curious traveler.
-
-If it's an architectural STYLE (not a single building), explain WHY the buildings look that way — the political, economic, or social forces that shaped them.
-
-QUALITY REQUIREMENTS:
-- "history": Write a MINIMUM of 5 vivid paragraphs. Weave in anecdotes, turning points, and human drama.
-- "cultural_context": Explain what this place means to locals today — rituals, pride, controversy.
-- "architectural_details": Describe materials, proportions, signature elements, and craftmanship.
-- "style_explanation": Provide the deep WHY — who commissioned it, what ideology it embodies, what problem it solved.
-- "significance_score": Rate 1-10 how globally important/rare this monument is (10 = Eiffel Tower level).
-- "details.xp_reward": Based on significance_score, award between 50 (local gem) and 500 (world wonder) XP.
-- "details.material": Primary construction material(s).
-- "details.visitors_per_year": Approximate annual visitor count or "Unknown".
-
-You MUST respond ONLY in valid JSON. No markdown fences, no commentary — raw JSON only.
-
-EXACT structure:
+Identify the monument/building/architectural style in the photo, then respond ONLY with this exact JSON (no markdown fences):
 {
-  "name": "Full official name or architectural style",
-  "city": "City name (or 'Various' for a style)",
-  "country": "Country (or 'Global' for styles)",
+  "name": "Official name or style",
+  "city": "City or 'Various'",
+  "country": "Country or 'Global'",
   "coordinates": { "lat": 0.0, "lng": 0.0 },
-  "history": "Rich 5+ paragraph narrative with human stories and historical turning points.",
-  "cultural_context": "What this place means to locals today — ceremonies, pride, controversies.",
-  "architectural_details": "Specific materials, dimensions, structural innovations, ornamental details.",
-  "style_explanation": "The political, economic, or artistic reason this style/building exists.",
+  "history": "5+ vivid paragraphs with anecdotes and historical turning points.",
+  "cultural_context": "What this means to locals today.",
+  "architectural_details": "Materials, proportions, structural innovations.",
+  "style_explanation": "Why this building/style exists — political, economic, or artistic reasons.",
   "significance_score": 8,
   "details": {
     "built": "Year or era",
-    "architect": "Name(s) or 'Unknown'",
-    "style": "Precise style label",
-    "height": "Height with unit, or N/A",
-    "material": "Primary material(s)",
-    "visitors_per_year": "e.g. 6 million",
+    "architect": "Name or 'Unknown'",
+    "style": "Style label",
+    "height": "Height or N/A",
+    "material": "Primary materials",
+    "visitors_per_year": "e.g. 6 million or Unknown",
     "unesco": false,
-    "fun_fact": "One genuinely surprising, little-known fact",
+    "fun_fact": "One surprising little-known fact",
     "xp_reward": 300
   }
 }
-
-If you genuinely cannot identify the image with reasonable confidence, respond ONLY with:
-{ "error": "Object not recognized — please aim at a clearly visible monument or building." }
-`.trim();
+If unrecognizable: { "error": "Object not recognized — please aim at a clearly visible monument." }`;
 
 export async function identifyMonument(
   imageBase64: string,
   mimeType: string,
   language: string = 'English',
-  locationHint?: string
+  locationHint?: string,
 ): Promise<MonumentResult | MonumentError> {
-  const locationCtx = locationHint
-    ? `\n\nUser's current location context: ${locationHint}. Use this to narrow your identification if multiple monuments match.`
-    : '';
+  const locationLine = locationHint ? `Location hint: ${locationHint}.` : '';
+  const langLine = language !== 'English' ? `Write all narrative fields in ${language.toUpperCase()}.` : '';
 
   const messages: OpenRouterMessage[] = [
     {
       role: 'system',
-      content:
-        IDENTIFICATION_SYSTEM_PROMPT +
-        locationCtx +
-        `\n\nCRITICAL: You MUST write all narrative text (history, cultural_context, architectural_details, style_explanation, fun_fact) completely in ${language.toUpperCase()}. JSON keys must remain in English.`,
+      content: [IDENTIFICATION_SYSTEM_PROMPT, locationLine, langLine].filter(Boolean).join('\n'),
     },
     {
       role: 'user',
       content: [
-        {
-          type: 'text',
-          text: 'Please identify this monument and return its complete history and all details in the JSON format specified. Be as thorough and vivid as possible.',
-        },
-        {
-          type: 'image_url',
-          image_url: {
-            url: `data:${mimeType};base64,${imageBase64}`,
-          },
-        },
+        { type: 'text', text: 'Identify this monument and return the JSON.' },
+        { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
       ],
     },
   ];
 
-  const raw = await callOpenRouter(VISION_MODELS, messages, true, 3800);
+  // Vision needs more tokens for rich history; race top 2 vision models
+  const raw = await callOpenRouter(VISION_MODELS, messages, true, 2400, 2);
   const result = extractJSON<MonumentResult | MonumentError>(raw);
 
-  if (!result) {
-    console.error('[RELICA] JSON extraction failed. Raw:', raw.slice(0, 300));
-    return { error: 'Could not parse AI response. Please try again.' };
-  }
+  if (!result) return { error: 'Could not parse AI response. Please try again.' };
 
-  // Post-process: ensure xp_reward is set
   if ('details' in result && result.details && !result.details.xp_reward) {
-    const score = result.significance_score ?? 5;
-    result.details.xp_reward = Math.round(score * 50);
+    result.details.xp_reward = Math.round((result.significance_score ?? 5) * 50);
   }
 
   return result;
 }
 
 // ─── Q&A Chat ─────────────────────────────────────────────────────────────────
+// Trimmed system prompt — only inject what's needed
 
 export async function askQuestion(
   monumentName: string,
@@ -322,78 +305,55 @@ export async function askQuestion(
   question: string,
   chatHistory: ChatMessage[],
   language: string = 'English',
-  extraContext?: { cultural_context?: string; architectural_details?: string; style_explanation?: string }
+  extraContext?: { cultural_context?: string; architectural_details?: string; style_explanation?: string },
 ): Promise<string> {
-  const contextBlocks = [
-    `📜 HISTORY:\n${history}`,
-    extraContext?.cultural_context ? `🏙️ CULTURAL CONTEXT:\n${extraContext.cultural_context}` : '',
-    extraContext?.architectural_details ? `🏗️ ARCHITECTURE:\n${extraContext.architectural_details}` : '',
-    extraContext?.style_explanation ? `🎨 STYLE EXPLANATION:\n${extraContext.style_explanation}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n\n');
+  // Only include context sections that exist — avoids padding tokens
+  const ctx = [
+    `History: ${history.slice(0, 800)}`,
+    extraContext?.cultural_context ? `Culture: ${extraContext.cultural_context.slice(0, 300)}` : '',
+    extraContext?.architectural_details ? `Architecture: ${extraContext.architectural_details.slice(0, 300)}` : '',
+  ].filter(Boolean).join('\n');
 
-  const systemPrompt = `
-You are "The Archivist" — RELICA's expert guide persona, specializing in ${monumentName}.
-
-Your character:
-- Deeply knowledgeable but never condescending
-- Speaks with genuine passion and vivid storytelling
-- Uses precise historical dates, names, and details
-- Occasionally shares your own "perspective" as an ancient archivist
-
-Your knowledge base for ${monumentName}:
-${contextBlocks}
-
-Response guidelines:
-- Always respond in ${language.toUpperCase()}
-- Default to 2-4 sentences; expand to full paragraphs ONLY when the user asks for more detail
-- Use concrete details — avoid vague platitudes
-- If asked something completely unrelated to this monument, gently redirect with humor
-- When uncertain about a specific fact, say so honestly rather than fabricating
-- End complex answers with "Would you like me to elaborate on any particular aspect?"
-  `.trim();
+  const systemPrompt = `You are "The Archivist" — RELICA's expert guide for ${monumentName}.
+Be knowledgeable, passionate, and concise (2-4 sentences by default).
+Context: ${ctx}
+Language: ${language}.`;
 
   const messages: OpenRouterMessage[] = [
     { role: 'system', content: systemPrompt },
-    ...chatHistory.slice(-10), // Keep last 10 messages for context window efficiency
+    ...chatHistory.slice(-6), // last 6 messages only (was 10 — saves tokens)
     { role: 'user', content: question },
   ];
 
-  const answer = await callOpenRouter(TEXT_MODELS, messages, false, 800);
-  return answer.trim();
+  return (await callOpenRouter(TEXT_MODELS, messages, false, 350, 3)).trim();
 }
 
-// ─── Smart Monument Caption Generator ────────────────────────────────────────
+// ─── Caption Generator ────────────────────────────────────────────────────────
 
-/**
- * Generates a poetic, shareable caption for a monument photo.
- * Used for the share card feature.
- */
 export async function generateCaption(
   monumentName: string,
   city: string,
   country: string,
   funFact: string,
-  language: string = 'English'
+  language: string = 'English',
 ): Promise<string> {
   const messages: OpenRouterMessage[] = [
     {
       role: 'system',
-      content: `You are a poetic travel writer. Write exactly 2 sentences — a striking opener and a closing hook — about ${monumentName} in ${city}, ${country}. Fun fact to weave in: "${funFact}". Write in ${language.toUpperCase()}. No hashtags, no emojis. Pure evocative prose.`,
+      content: `Write exactly 2 poetic sentences about ${monumentName} in ${city}, ${country}. Weave in: "${funFact.slice(0, 120)}". Language: ${language}. No hashtags.`,
     },
-    { role: 'user', content: 'Generate the caption.' },
+    { role: 'user', content: 'Generate.' },
   ];
 
   try {
-    const result = await callOpenRouter(TEXT_MODELS, messages, false, 200);
-    return result.trim();
+    return (await callOpenRouter(TEXT_MODELS, messages, false, 120, 3)).trim();
   } catch {
     return `Discovered at ${monumentName}, ${city}. Every stone tells a story — this one whispered of centuries.`;
   }
 }
 
-// ─── Gamification & Quests ────────────────────────────────────────────────────
+// ─── Quest Generation ─────────────────────────────────────────────────────────
+// Trimmed prompt — removed verbose philosophy section
 
 export interface QuestTask {
   id: string;
@@ -414,156 +374,61 @@ export interface DynamicQuest {
   tasks: QuestTask[];
 }
 
-const QUEST_SYSTEM_PROMPT = `
-You are the Quest Master AI for 'RELICA' — a gamified urban exploration app.
-Your quests should feel like real adventures, not scavenger hunt checklists.
-
-Quest Design Philosophy:
-- Each task should feel achievable within 5-20 minute walking distance
-- Mix task TYPES: architecture (scan a building), nature (find a unique plant), exploration (discover a hidden alley), photo (frame a specific shot), social (ask a local)
-- The quest theme should match the city's personality (e.g. "Art Nouveau Paris", "Ancient Rome Circuit")
-- Hints should be evocative and specific, not generic
-
-You MUST respond ONLY in valid JSON. No markdown fences.
-
-EXACT structure:
-{
-  "title": "Quest name that feels epic (e.g. 'Shadows of the Republic')",
-  "theme": "One-line description of the quest's narrative theme",
-  "duration_minutes": 45,
-  "total_xp": 1000,
-  "tasks": [
-    {
-      "id": "task_1",
-      "description": "Find and photograph a door that is over 100 years old.",
-      "hint": "Look for worn ironwork handles and stone door frames — not modern glass.",
-      "location_hint": "The oldest streets near the cathedral district.",
-      "type": "photo",
-      "difficulty": "easy",
-      "completed": false,
-      "xp_reward": 300
-    },
-    ...3 tasks total...
-  ]
-}
-`.trim();
-
 export async function generateQuest(
   lat: number | null = null,
   lng: number | null = null,
-  city: string = 'Unknown City',
-  country: string = 'Unknown Country',
-  language: string = 'English'
+  city = 'Unknown City',
+  country = 'Unknown Country',
+  language = 'English',
 ): Promise<DynamicQuest> {
-  // Add time-of-day context for more relevant quests
   const hour = new Date().getHours();
-  const timeOfDay =
-    hour >= 5 && hour < 12 ? 'morning' :
-    hour >= 12 && hour < 17 ? 'afternoon' :
-    hour >= 17 && hour < 21 ? 'evening' : 'night';
-
-  const locationContext = lat && lng
-    ? `GPS coordinates [${lat.toFixed(4)}, ${lng.toFixed(4)}] in `
-    : '';
+  const timeOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : hour < 21 ? 'evening' : 'night';
+  const duration = timeOfDay === 'night' ? 30 : 45;
+  const locationCtx = lat && lng ? `[${lat.toFixed(3)}, ${lng.toFixed(3)}] ` : '';
 
   const messages: OpenRouterMessage[] = [
     {
       role: 'system',
-      content:
-        QUEST_SYSTEM_PROMPT +
-        `\n\nCRITICAL: Translate all quest content (title, theme, descriptions, hints) into ${language.toUpperCase()}. Keep JSON keys in English.`,
+      content: `You are a quest master for RELICA, a monument exploration app. Generate a 3-task urban quest.
+Return ONLY valid JSON, no markdown:
+{"title":"Epic quest name","theme":"One-line narrative theme","duration_minutes":${duration},"total_xp":900,"tasks":[{"id":"task_1","description":"...","hint":"...","location_hint":"...","type":"architecture","difficulty":"easy","completed":false,"xp_reward":300},{"id":"task_2",...},{"id":"task_3",...}]}
+Task types: architecture, nature, exploration, social, photo. Language: ${language}.`,
     },
     {
       role: 'user',
-      content: `Generate an exploration quest for a user currently in ${locationContext}${city}, ${country}. It is currently ${timeOfDay}. Make the tasks feel authentically local — reference the city's known landmarks, streets, or cultural identity. The quest should be doable in ${timeOfDay === 'night' ? '30' : '45'} minutes by foot.`,
+      content: `City: ${locationCtx}${city}, ${country}. Time: ${timeOfDay}. Make tasks feel locally authentic.`,
     },
   ];
 
-  const raw = await callOpenRouter(TEXT_MODELS, messages, true, 1600);
+  const raw = await callOpenRouter(TEXT_MODELS, messages, true, 700, 3);
   const result = extractJSON<DynamicQuest>(raw);
 
-  if (result && result.tasks?.length >= 2) {
-    // Ensure all tasks have required fields
+  if (result && Array.isArray(result.tasks) && result.tasks.length >= 2) {
     result.tasks = result.tasks.map((t, i) => ({
       ...t,
       id: t.id || `task_${i + 1}`,
-      difficulty: t.difficulty || 'medium',
+      difficulty: (t.difficulty || 'medium') as 'easy' | 'medium' | 'hard',
       completed: false,
     }));
-    return result;
+    return result as DynamicQuest;
   }
 
-  console.error('[RELICA] Quest parse failed, using fallback. Raw:', raw.slice(0, 200));
-
-  // Smart fallback based on time of day
+  // Fallback
   return {
-    title: timeOfDay === 'night' ? "Night Explorer's Circuit" : "Urban Discovery Walk",
+    title: timeOfDay === 'night' ? "Night Explorer's Circuit" : 'Urban Discovery Walk',
     theme: `Discover the hidden stories of ${city}`,
-    duration_minutes: timeOfDay === 'night' ? 30 : 45,
+    duration_minutes: duration,
     total_xp: 900,
     tasks: [
-      {
-        id: 'task_1',
-        description: 'Find and scan a historical building or monument.',
-        hint: 'Look for stone facades, sculpted details, and plaques on walls.',
-        location_hint: 'City center or old town district.',
-        type: 'architecture',
-        difficulty: 'easy',
-        completed: false,
-        xp_reward: 300,
-      },
-      {
-        id: 'task_2',
-        description: 'Photograph a striking doorway or gate.',
-        hint: 'Look for ornate ironwork, carved stone arches, or brightly painted wood.',
-        location_hint: 'Side streets away from main tourist areas.',
-        type: 'photo',
-        difficulty: 'easy',
-        completed: false,
-        xp_reward: 300,
-      },
-      {
-        id: 'task_3',
-        description: 'Find a fountain, water feature, or public square.',
-        hint: 'Public squares often have a central feature — look for gathered locals.',
-        location_hint: 'Within 10 minutes walk of the city center.',
-        type: 'exploration',
-        difficulty: 'medium',
-        completed: false,
-        xp_reward: 300,
-      },
+      { id: 'task_1', description: 'Find and scan a historical building or monument.', hint: 'Look for stone facades, sculpted details, and plaques.', location_hint: 'City center or old town.', type: 'architecture', difficulty: 'easy', completed: false, xp_reward: 300 },
+      { id: 'task_2', description: 'Photograph a striking doorway or gate.', hint: 'Look for ornate ironwork or carved stone arches.', location_hint: 'Side streets away from tourist areas.', type: 'photo', difficulty: 'easy', completed: false, xp_reward: 300 },
+      { id: 'task_3', description: 'Find a fountain, water feature, or public square.', hint: 'Public squares often have a central feature.', location_hint: 'Within 10 min walk of city center.', type: 'exploration', difficulty: 'medium', completed: false, xp_reward: 300 },
     ],
   };
 }
 
-// ─── Gamification Photo Verification ──────────────────────────────────────────
-
-const VERIFICATION_SYSTEM_PROMPT = `
-You are the Verification Engine for RELICA's quest system.
-
-Your job: Determine if a submitted photo satisfies any ONE of the active, uncompleted quest tasks.
-
-Verification philosophy:
-- Be GENEROUS. If the intent is clear, accept it.
-- "Find a bronze statue" + photo of ANY statue = MATCH
-- "Photograph a doorway" + photo of ANY door = MATCH  
-- Only reject if the photo is completely unrelated (e.g. a selfie when the task was to find a building)
-- One photo can only complete ONE task at a time (the best match)
-
-You MUST respond ONLY in valid JSON. No markdown fences.
-{
-  "matched_task_id": "task_1",
-  "reason": "The image clearly shows a historic stone building facade matching the architecture task.",
-  "confidence": 0.92
-}
-
-If no tasks are satisfied:
-{
-  "matched_task_id": null,
-  "reason": "The image does not appear to match any active task.",
-  "confidence": 0.0
-}
-`.trim();
+// ─── Quest Photo Verification ─────────────────────────────────────────────────
+// Kept vision since we need to see the photo — but trimmed prompt heavily
 
 export interface VerificationResult {
   matched_task_id: string | null;
@@ -574,79 +439,65 @@ export interface VerificationResult {
 export async function verifyQuestObjective(
   imageBase64: string,
   mimeType: string,
-  uncompletedTasks: QuestTask[]
+  uncompletedTasks: QuestTask[],
 ): Promise<VerificationResult> {
-  if (uncompletedTasks.length === 0) {
-    return { matched_task_id: null, reason: 'No active tasks.', confidence: 0 };
-  }
+  if (!uncompletedTasks.length) return { matched_task_id: null, reason: 'No active tasks.', confidence: 0 };
 
   const taskList = uncompletedTasks
-    .map(t => `ID: ${t.id} | Type: ${t.type} | Difficulty: ${t.difficulty || 'medium'}\nTask: ${t.description}`)
-    .join('\n\n');
+    .map(t => `${t.id}: [${t.type}] ${t.description}`)
+    .join('\n');
 
   const messages: OpenRouterMessage[] = [
-    { role: 'system', content: VERIFICATION_SYSTEM_PROMPT },
+    {
+      role: 'system',
+      content: `You verify if a photo matches a quest task. Be generous — if intent is clear, accept it.
+Return ONLY JSON: {"matched_task_id":"task_1","reason":"...","confidence":0.9}
+Or if no match: {"matched_task_id":null,"reason":"...","confidence":0.0}`,
+    },
     {
       role: 'user',
       content: [
-        {
-          type: 'text',
-          text: `Active quest tasks to check:\n\n${taskList}\n\nAnalyze the submitted image and return your verdict as JSON.`,
-        },
-        {
-          type: 'image_url',
-          image_url: { url: `data:${mimeType};base64,${imageBase64}` },
-        },
+        { type: 'text', text: `Tasks:\n${taskList}\n\nDoes the photo match any task?` },
+        { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
       ],
     },
   ];
 
-  const raw = await callOpenRouter(VISION_MODELS, messages, true, 2000); // was 3800
+  const raw = await callOpenRouter(VISION_MODELS, messages, true, 180, 2);
   const result = extractJSON<VerificationResult>(raw);
 
-  if (!result) {
-    return { matched_task_id: null, reason: 'Parse error.', confidence: 0 };
-  }
+  if (!result) return { matched_task_id: null, reason: 'Parse error.', confidence: 0 };
 
-  // Safety guard: if AI returns a non-existent task ID, nullify it
+  // Validate task ID actually exists
   if (result.matched_task_id && !uncompletedTasks.find(t => t.id === result.matched_task_id)) {
     result.matched_task_id = null;
     result.confidence = 0;
   }
-
-  // Only accept matches above 50% confidence
-  if (result.confidence !== undefined && result.confidence < 0.5) {
-    result.matched_task_id = null;
-  }
+  if ((result.confidence ?? 1) < 0.5) result.matched_task_id = null;
 
   return result;
 }
 
-// ─── Geo-Alert Monument Hint ──────────────────────────────────────────────────
+// ─── Geo-Alert ────────────────────────────────────────────────────────────────
 
-/**
- * Given nearby POI data, generate an enticing "you're close to X" notification.
- * Used by the geofencing system.
- */
 export async function generateProximityAlert(
   monumentName: string,
   city: string,
   distanceMeters: number,
-  language: string = 'English'
+  language = 'English',
 ): Promise<string> {
   const messages: OpenRouterMessage[] = [
     {
       role: 'system',
-      content: `You are writing a short, exciting push notification (max 120 characters) to alert a traveler that they are ${distanceMeters}m away from ${monumentName} in ${city}. Make it feel urgent and exciting. In ${language.toUpperCase()}. No hashtags.`,
+      content: `Write a single exciting push notification (max 100 chars) telling a traveler they are ${distanceMeters}m from ${monumentName} in ${city}. Language: ${language}. No hashtags.`,
     },
-    { role: 'user', content: 'Generate the alert.' },
+    { role: 'user', content: 'Generate.' },
   ];
 
   try {
-    const result = await callOpenRouter(TEXT_MODELS, messages, false, 120);
-    return result.trim().slice(0, 140);
+    return (await callOpenRouter(TEXT_MODELS, messages, false, 80, 3)).trim().slice(0, 140);
   } catch {
-    return `🏛️ You're ${distanceMeters}m from ${monumentName}! Tap to start exploring.`;
+    return `🏛️ You're ${distanceMeters}m from ${monumentName}! Tap to explore.`;
   }
 }
 
@@ -654,7 +505,7 @@ export async function generateProximityAlert(
 
 export function clearAICache() {
   responseCache.clear();
-  console.log('[RELICA] Cache cleared.');
+  console.log('[RELICA] AI cache cleared.');
 }
 
 export function getAICacheSize() {

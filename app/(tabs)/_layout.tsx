@@ -1,33 +1,81 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
+import { Camera, Image, Map as MapIcon, User, BookOpen, Swords } from 'lucide-react-native';
 
 import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
+import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useLanguage } from '@/lib/languageContext';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
+  const { t } = useLanguage();
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
+        tabBarActiveTintColor: Colors[colorScheme ?? 'dark'].tint,
+        tabBarInactiveTintColor: Colors[colorScheme ?? 'dark'].icon,
         headerShown: false,
         tabBarButton: HapticTab,
+        tabBarStyle: {
+          backgroundColor: Colors[colorScheme ?? 'dark'].background,
+          borderTopWidth: 0,
+          borderTopLeftRadius: 32,
+          borderTopRightRadius: 32,
+          height: 88,
+          paddingTop: 10,
+          paddingBottom: 28,
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          elevation: 0,
+          shadowOpacity: 0,
+        },
       }}>
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          title: t('camera'),
+          tabBarIcon: ({ color }) => <Camera size={24} color={color} />,
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="gallery"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          
+          title: t('gallery'),
+          tabBarIcon: ({ color }) => <Image size={24} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="map"
+        options={{
+          title: t('map'),
+          tabBarIcon: ({ color }) => <MapIcon size={24} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="quest"
+        options={{
+          title: t('quest'),
+          tabBarIcon: ({ color }) => <Swords size={24} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="passport"
+        options={{
+          href: null,
+          title: 'Passport',
+          tabBarIcon: ({ color }) => <BookOpen size={24} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: t('profile'),
+          tabBarIcon: ({ color }) => <User size={24} color={color} />,
         }}
       />
     </Tabs>

@@ -1,57 +1,58 @@
-name: Build iOS IPA
+name: Build Unsigned IPA (Relica)
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: {}
 
 jobs:
   build:
-    runs-on: macos-latest
-
+    runs-on: macos-14
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
+          cache: npm
 
-      - name: Install dependencies
-        run: npm install
+      - name: Install JS deps
+        run: npm ci
 
-      - name: Install Expo CLI
-        run: npm install -g expo-cli
-
-      - name: Generate iOS project
-        run: npx expo prebuild
+      - name: Prebuild native iOS project
+        run: npx expo prebuild --platform ios --clean
 
       - name: Install CocoaPods
         run: |
           cd ios
-          pod install
+          pod install --repo-update
 
-      - name: Build archive
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+
+      - name: Build unsigned archive
         run: |
-          cd ios
           xcodebuild \
-            -workspace *.xcworkspace \
-            -scheme $(ls *.xcodeproj | sed 's/.xcodeproj//') \
+            -workspace ios/RELICA.xcworkspace \
+            -scheme RELICA \
             -configuration Release \
             -sdk iphoneos \
-            -archivePath build/App.xcarchive \
-            archive
+            -archivePath build/Relica.xcarchive \
+            archive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM=""
 
-      - name: Export IPA
+      - name: Package IPA (unsigned)
         run: |
-          cd ios
-          mkdir -p build/ipa
-          xcodebuild -exportArchive \
-            -archivePath build/App.xcarchive \
-            -exportPath build/ipa \
-            -exportOptionsPlist ExportOptions.plist
+          mkdir -p Payload
+          cp -r build/Relica.xcarchive/Products/Applications/*.app Payload/
+          zip -r Relica.ipa Payload
 
-      - name: Upload IPA
+      - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ios-ipa
-          path: ios/build/ipa
+          name: Relica-unsigned-ipa
+          path: Relica.ipa
+          retention-days: 14

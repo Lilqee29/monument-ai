@@ -16,6 +16,15 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Select latest available Xcode
+        run: |
+          ls /Applications | grep Xcode
+          LATEST=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -n 1)
+          if [ -z "$LATEST" ]; then LATEST="/Applications/Xcode.app"; fi
+          echo "Selecting $LATEST"
+          sudo xcode-select -s "$LATEST"
+          xcodebuild -version
+
       - name: Install JS deps
         run: npm install --legacy-peer-deps
 
@@ -26,15 +35,6 @@ jobs:
         run: |
           cd ios
           pod install --repo-update
-
-      - name: Select latest available Xcode
-        run: |
-          ls /Applications | grep Xcode
-          LATEST=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -n 1)
-          if [ -z "$LATEST" ]; then LATEST="/Applications/Xcode.app"; fi
-          echo "Selecting $LATEST"
-          sudo xcode-select -s "$LATEST"
-          xcodebuild -version
 
       - name: Build unsigned archive
         run: |

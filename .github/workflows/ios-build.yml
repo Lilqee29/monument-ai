@@ -17,7 +17,7 @@ jobs:
           cache: npm
 
       - name: Install JS deps
-        run: npm ci
+        run: npm install --legacy-peer-deps
 
       - name: Prebuild native iOS project
         run: npx expo prebuild --platform ios --clean

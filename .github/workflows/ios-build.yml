@@ -59,6 +59,7 @@ jobs:
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
           EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
           EXPO_PUBLIC_OPENROUTER_API_KEY: ${{ secrets.EXPO_PUBLIC_OPENROUTER_API_KEY }}
+          EXPO_PUBLIC_GEMINI_API_KEY: ${{ secrets.EXPO_PUBLIC_GEMINI_API_KEY }}
         run: npx expo prebuild --platform ios --clean
 
       - name: Install CocoaPods
@@ -76,12 +77,14 @@ jobs:
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
           EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
           EXPO_PUBLIC_OPENROUTER_API_KEY: ${{ secrets.EXPO_PUBLIC_OPENROUTER_API_KEY }}
+          EXPO_PUBLIC_GEMINI_API_KEY: ${{ secrets.EXPO_PUBLIC_GEMINI_API_KEY }}
         run: |
           echo "=== EXPO_PUBLIC env vars (pre-build verification) ==="
           echo "CLERK_KEY length: ${#EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY}"
           echo "SUPABASE_URL length: ${#EXPO_PUBLIC_SUPABASE_URL}"
           echo "SUPABASE_ANON_KEY length: ${#EXPO_PUBLIC_SUPABASE_ANON_KEY}"
           echo "OPENROUTER_KEY length: ${#EXPO_PUBLIC_OPENROUTER_API_KEY}"
+          echo "GEMINI_KEY length: ${#EXPO_PUBLIC_GEMINI_API_KEY}"
           echo ""
           if [ -z "$EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY" ]; then
             echo "❌ FATAL: EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY is empty!"
@@ -100,6 +103,7 @@ jobs:
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
           EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
           EXPO_PUBLIC_OPENROUTER_API_KEY: ${{ secrets.EXPO_PUBLIC_OPENROUTER_API_KEY }}
+          EXPO_PUBLIC_GEMINI_API_KEY: ${{ secrets.EXPO_PUBLIC_GEMINI_API_KEY }}
         run: |
           xcodebuild \
             -workspace ios/RELICA.xcworkspace \

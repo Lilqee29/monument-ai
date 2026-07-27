@@ -3,6 +3,13 @@
 export const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 export const OPENROUTER_API_KEY = process.env.EXPO_PUBLIC_OPENROUTER_API_KEY || '';
 
+// ─── Gemini Config ───────────────────────────────────────────────────────────
+// Primary provider — faster, better JSON, free 15 RPM / 1M tokens per day
+
+export const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
+export const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
+export const GEMINI_MODEL = 'gemini-2.5-flash'; // best free: fast, 1M ctx, JSON, vision
+
 /**
  * Verified free model lists — July 2026.
  * All models confirmed $0 on OpenRouter as of July 27, 2026.
@@ -152,11 +159,98 @@ async function fetchModel(
   return content;
 }
 
+// ─── Gemini fetch — primary provider ────────────────────────────────────────
+
+interface GeminiPart {
+  text?: string;
+  inlineData?: { mimeType: string; data: string };
+}
+
+interface GeminiContent {
+  role: 'user' | 'model';
+  parts: GeminiPart[];
+}
+
+async function fetchGemini(
+  messages: OpenRouterMessage[],
+  maxTokens: number,
+  jsonMode: boolean,
+  signal?: AbortSignal,
+): Promise<string> {
+  if (!GEMINI_API_KEY) throw new Error('No Gemini API key');
+
+  // Convert OpenRouter messages → Gemini format
+  // Gemini uses 'model' instead of 'assistant', and systemInstruction is separate
+  let systemPrompt = '';
+  const contents: GeminiContent[] = [];
+
+  for (const msg of messages) {
+    if (msg.role === 'system') {
+      systemPrompt += (systemPrompt ? '\n' : '') + msg.content;
+    } else {
+      const parts: GeminiPart[] = [];
+      if (typeof msg.content === 'string') {
+        parts.push({ text: msg.content });
+      } else {
+        for (const part of msg.content) {
+          if (part.type === 'text') {
+            parts.push({ text: part.text });
+          } else if (part.type === 'image_url') {
+            // Extract base64 data from data URL
+            const match = part.image_url.url.match(/^data:([^;]+);base64,(.+)$/);
+            if (match) {
+              parts.push({ inlineData: { mimeType: match[1], data: match[2] } });
+            }
+          }
+        }
+      }
+      contents.push({
+        role: msg.role === 'assistant' ? 'model' : 'user',
+        parts,
+      });
+    }
+  }
+
+  const body: Record<string, unknown> = {
+    contents,
+    generationConfig: {
+      maxOutputTokens: maxTokens,
+      temperature: 0.7,
+    },
+  };
+
+  if (systemPrompt) {
+    body.systemInstruction = { parts: [{ text: systemPrompt }] };
+  }
+  if (jsonMode) {
+    (body.generationConfig as Record<string, unknown>).responseMimeType = 'application/json';
+  }
+
+  const url = `${GEMINI_API_URL}/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  if (!response.ok) {
+    const err = await response.text().catch(() => '');
+    throw new Error(`Gemini HTTP ${response.status}: ${err.slice(0, 200)}`);
+  }
+
+  const data = await response.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text?.trim()) throw new Error('Gemini empty response');
+
+  return text;
+}
+
 // ─── RACE strategy: fire top N models simultaneously, take the first winner ───
 //
-// This is the biggest speed improvement. Instead of trying models one-by-one
-// (sequential — slow), we fire the top 3 at once and cancel the losers.
-// If any of the fast small models responds in 2s, we never wait for the 10s ones.
+// Gemini is tried first (fastest, best JSON). If it fails or no key, 
+// fall back to OpenRouter race.
 
 async function callOpenRouter(
   models: string[],
@@ -207,6 +301,46 @@ async function callOpenRouter(
     }
     throw new Error('All models failed.');
   }
+}
+
+// ─── Unified callAI — Gemini first, OpenRouter fallback ─────────────────────
+//
+// Every public function should use this. Gemini is tried first (faster, better 
+// JSON, free tier). If Gemini fails or no key, falls back to OpenRouter race.
+
+async function callAI(
+  messages: OpenRouterMessage[],
+  options: {
+    jsonMode?: boolean;
+    maxTokens?: number;
+    vision?: boolean;
+    raceCount?: number;
+  } = {},
+): Promise<string> {
+  const { jsonMode = false, maxTokens = 800, vision = false, raceCount = 3 } = options;
+
+  // 1. Try Gemini first (if key is configured)
+  if (GEMINI_API_KEY) {
+    const cacheKey = `gemini::${JSON.stringify(messages)}`;
+    const cached = responseCache.get(cacheKey);
+    if (cached) {
+      console.log('[RELICA] ✓ Gemini cache hit');
+      return cached;
+    }
+
+    try {
+      const content = await fetchGemini(messages, maxTokens, jsonMode);
+      responseCache.set(cacheKey, content);
+      console.log('[RELICA] ✓ Gemini winner');
+      return content;
+    } catch (err: any) {
+      console.warn(`[RELICA] Gemini failed: ${err.message} — falling back to OpenRouter`);
+    }
+  }
+
+  // 2. Fallback to OpenRouter race
+  const models = vision ? VISION_MODELS : TEXT_MODELS;
+  return callOpenRouter(models, messages, jsonMode, maxTokens, raceCount);
 }
 
 // ─── JSON Extraction Helper ───────────────────────────────────────────────────
@@ -283,8 +417,8 @@ export async function identifyMonument(
     },
   ];
 
-  // Vision needs more tokens for rich history; race top 2 vision models
-  const raw = await callOpenRouter(VISION_MODELS, messages, true, 2400, 2);
+  // Vision needs more tokens for rich history; try Gemini first, then race top 2 vision models
+  const raw = await callAI(messages, { jsonMode: true, maxTokens: 2400, vision: true, raceCount: 2 });
   const result = extractJSON<MonumentResult | MonumentError>(raw);
 
   if (!result) return { error: 'Could not parse AI response. Please try again.' };
@@ -325,7 +459,7 @@ Language: ${language}.`;
     { role: 'user', content: question },
   ];
 
-  return (await callOpenRouter(TEXT_MODELS, messages, false, 350, 3)).trim();
+  return (await callAI(messages, { jsonMode: false, maxTokens: 350, raceCount: 3 })).trim();
 }
 
 // ─── Caption Generator ────────────────────────────────────────────────────────
@@ -346,7 +480,7 @@ export async function generateCaption(
   ];
 
   try {
-    return (await callOpenRouter(TEXT_MODELS, messages, false, 120, 3)).trim();
+    return (await callAI(messages, { jsonMode: false, maxTokens: 120, raceCount: 3 })).trim();
   } catch {
     return `Discovered at ${monumentName}, ${city}. Every stone tells a story — this one whispered of centuries.`;
   }
@@ -400,7 +534,7 @@ Task types: architecture, nature, exploration, social, photo. Language: ${langua
     },
   ];
 
-  const raw = await callOpenRouter(TEXT_MODELS, messages, true, 700, 3);
+  const raw = await callAI(messages, { jsonMode: true, maxTokens: 700, raceCount: 3 });
   const result = extractJSON<DynamicQuest>(raw);
 
   if (result && Array.isArray(result.tasks) && result.tasks.length >= 2) {
@@ -463,7 +597,7 @@ Or if no match: {"matched_task_id":null,"reason":"...","confidence":0.0}`,
     },
   ];
 
-  const raw = await callOpenRouter(VISION_MODELS, messages, true, 180, 2);
+  const raw = await callAI(messages, { jsonMode: true, maxTokens: 180, vision: true, raceCount: 2 });
   const result = extractJSON<VerificationResult>(raw);
 
   if (!result) return { matched_task_id: null, reason: 'Parse error.', confidence: 0 };
@@ -495,7 +629,7 @@ export async function generateProximityAlert(
   ];
 
   try {
-    return (await callOpenRouter(TEXT_MODELS, messages, false, 80, 3)).trim().slice(0, 140);
+    return (await callAI(messages, { jsonMode: false, maxTokens: 80, raceCount: 3 })).trim().slice(0, 140);
   } catch {
     return `🏛️ You're ${distanceMeters}m from ${monumentName}! Tap to explore.`;
   }

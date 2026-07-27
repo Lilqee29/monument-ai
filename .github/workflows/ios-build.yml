@@ -36,18 +36,66 @@ jobs:
 
       - name: Patch expo-modules-jsi for Swift 6.2 compatibility
         run: |
+          # ── Fix 1: Downgrade SPM tools version to avoid Swift 6 strict mode entirely ──
+          PKG="node_modules/expo-modules-jsi/apple/Package.swift"
+          if [ -f "$PKG" ]; then
+            echo "=== Original Package.swift first line ==="
+            head -1 "$PKG"
+            echo ""
+            # Downgrade swift-tools-version:6.0 → swift-tools-version:5.9
+            # This disables Swift 6 strict concurrency and avoids abs() type inference issues
+            sed -i.bak 's/swift-tools-version:6\./swift-tools-version:5./g' "$PKG"
+            echo "=== Patched Package.swift first line ==="
+            head -1 "$PKG"
+            echo ""
+          fi
+
+          # ── Fix 2: Also fix the abs() call directly in case SPM downgrade isn't enough ──
           FILE="node_modules/expo-modules-jsi/apple/Sources/ExpoModulesJSI/Coding/JavaScriptCodable+Date.swift"
           if [ -f "$FILE" ]; then
+            echo "=== Original line 53 ==="
+            sed -n '53p' "$FILE"
+            echo ""
             echo "Patching $FILE for Swift 6.2 type inference..."
-            # Fix: add explicit type annotation to abs() call to resolve ambiguity in Swift 6.2
-            sed -i.bak 's/abs(milliseconds) <= maxJavaScriptDateMilliseconds/(abs(milliseconds) as Double) <= maxJavaScriptDateMilliseconds/' "$FILE"
-            echo "Patch applied."
+            # Cast the argument INSIDE abs() to resolve type ambiguity in Swift 6.2
+            # WRONG: (abs(milliseconds) as Double) — casts result, abs() itself is still ambiguous
+            # RIGHT: abs(milliseconds as Double) — tells Swift which abs() overload to use
+            sed -i.bak 's/abs(milliseconds)/abs(milliseconds as Double)/' "$FILE"
+            echo ""
+            echo "=== Patched line 53 ==="
+            sed -n '53p' "$FILE"
+            echo ""
+            echo "All patches applied."
           else
             echo "File not found, skipping patch."
           fi
 
       - name: Prebuild native iOS project
         run: npx expo prebuild --platform ios --clean
+
+      - name: Patch Podfile to force Swift 5 language mode
+        run: |
+          PODFILE="ios/Podfile"
+          if [ -f "$PODFILE" ]; then
+            # Add post_install hook to force Swift 5 for all pods if not already present
+            if ! grep -q 'swift_version.*5' "$PODFILE" 2>/dev/null; then
+              cat >> "$PODFILE" << 'HOOK'
+
+          post_install do |installer|
+            installer.pods_project.targets.each do |target|
+              target.build_configurations.each do |config|
+                config.build_settings['SWIFT_VERSION'] = '5'
+              end
+            end
+          end
+          HOOK
+              echo "Added Swift 5 post_install hook to Podfile"
+            else
+              echo "Swift 5 setting already in Podfile"
+            fi
+          else
+            echo "Podfile not found, skipping."
+          fi
 
       - name: Install CocoaPods
         run: |
@@ -66,7 +114,8 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            DEVELOPMENT_TEAM=""
+            DEVELOPMENT_TEAM="" \
+            OTHER_SWIFT_FLAGS="-swift-version 5"
 
       - name: Package IPA (unsigned)
         run: |

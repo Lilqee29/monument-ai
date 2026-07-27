@@ -2,7 +2,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { View } from 'react-native';
+import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import 'react-native-reanimated';
 import { 
   useFonts, 
@@ -21,13 +21,19 @@ import { requestGeofencingPermissions } from '@/lib/geofencing';
 import { LanguageProvider } from '@/lib/languageContext';
 import { useColorScheme } from 'nativewind';
 import { setupNotifications } from '@/lib/notifications';
+import { CrashReporter, recordModuleError } from '@/components/CrashReporter';
 
 import "../global.css";
 
-const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
-
-if (!publishableKey) {
-  throw new Error('Missing Publishable Key. Please set EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY in your .env');
+// ── Module-scope env-var check (safe — no throw) ────────────────────
+let publishableKey = '';
+try {
+  publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? '';
+  if (!publishableKey) {
+    recordModuleError('CLERK_KEY', new Error('EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY is empty/undefined'));
+  }
+} catch (e) {
+  recordModuleError('CLERK_KEY', e);
 }
 
 SplashScreen.preventAutoHideAsync();
@@ -36,6 +42,51 @@ export const unstable_settings = {
   anchor: '(tabs)',
 };
 
+// ── Error display shown when env vars are missing ────────────────────
+function EnvVarErrorScreen() {
+  const envSnapshot = {
+    EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? '(undefined)',
+    EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL ?? '(undefined)',
+    EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
+      ? `${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY.substring(0, 12)}...`
+      : '(undefined)',
+    EXPO_PUBLIC_OPENROUTER_API_KEY: process.env.EXPO_PUBLIC_OPENROUTER_API_KEY
+      ? `${process.env.EXPO_PUBLIC_OPENROUTER_API_KEY.substring(0, 12)}...`
+      : '(undefined)',
+  };
+  const moduleErrors = global.__CRASH_REPORTER_ERRORS__ ?? [];
+
+  return (
+    <View style={localStyles.container}>
+      <ScrollView contentContainerStyle={localStyles.scroll}>
+        <Text style={localStyles.title}>⚠ ENV VARS MISSING</Text>
+        <Text style={localStyles.subtitle}>
+          EXPO_PUBLIC_* variables were not injected into the JS bundle during the CI build.
+        </Text>
+
+        <Text style={localStyles.section}>BUILD-TIME ENV VARS:</Text>
+        {Object.entries(envSnapshot).map(([k, v]) => (
+          <Text key={k} style={localStyles.envLine} selectable>
+            {k}: {v}
+          </Text>
+        ))}
+
+        <Text style={localStyles.section}>MODULE-SCOPE ERRORS:</Text>
+        {moduleErrors.length > 0 ? (
+          moduleErrors.map((e, i) => (
+            <Text key={i} style={localStyles.errorLine} selectable>
+              [{e.phase}] {e.message}
+            </Text>
+          ))
+        ) : (
+          <Text style={localStyles.errorLine}>(none)</Text>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+// ── Navigation components ───────────────────────────────────────────
 function AuthRedirectHandler() {
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
@@ -138,6 +189,7 @@ function RootLayoutNav() {
   );
 }
 
+// ── Root ────────────────────────────────────────────────────────────
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
     PlayfairDisplay_400Regular,
@@ -158,15 +210,31 @@ export default function RootLayout() {
   }
 
   return (
-    <ClerkProvider tokenCache={tokenCache} publishableKey={publishableKey}>
-      <ClerkLoaded>
-        <ThemeInitializer />
-        <LanguageProvider>
-          <QuestProvider>
-            <RootLayoutNav />
-          </QuestProvider>
-        </LanguageProvider>
-      </ClerkLoaded>
-    </ClerkProvider>
+    <CrashReporter>
+      {publishableKey ? (
+        <ClerkProvider tokenCache={tokenCache} publishableKey={publishableKey}>
+          <ClerkLoaded>
+            <ThemeInitializer />
+            <LanguageProvider>
+              <QuestProvider>
+                <RootLayoutNav />
+              </QuestProvider>
+            </LanguageProvider>
+          </ClerkLoaded>
+        </ClerkProvider>
+      ) : (
+        <EnvVarErrorScreen />
+      )}
+    </CrashReporter>
   );
 }
+
+const localStyles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#000' },
+  scroll: { padding: 20, paddingTop: 60 },
+  title: { color: '#ff4444', fontSize: 22, fontWeight: 'bold', marginBottom: 8 },
+  subtitle: { color: '#ff8888', fontSize: 13, marginBottom: 20, lineHeight: 18 },
+  section: { color: '#ffcc00', fontSize: 14, fontWeight: 'bold', marginTop: 16, marginBottom: 4 },
+  envLine: { color: '#ffffff', fontSize: 12, fontFamily: 'Courier', marginLeft: 8, marginBottom: 2 },
+  errorLine: { color: '#ff8888', fontSize: 11, fontFamily: 'Courier', marginLeft: 8, marginBottom: 4 },
+});

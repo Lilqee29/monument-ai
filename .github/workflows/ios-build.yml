@@ -66,9 +66,40 @@ jobs:
           cd ios
           pod install --repo-update
 
+      # CRITICAL: EXPO_PUBLIC_* vars MUST also be present during xcodebuild.
+      # Metro bundles the JS inside the Xcode "Bundle React Native code" script phase
+      # and reads process.env.EXPO_PUBLIC_* at that time. Without these, the JS bundle
+      # will have undefined env vars → crash on open (Clerk key check throws).
+      - name: Verify EXPO_PUBLIC env vars before build
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          EXPO_PUBLIC_OPENROUTER_API_KEY: ${{ secrets.EXPO_PUBLIC_OPENROUTER_API_KEY }}
+        run: |
+          echo "=== EXPO_PUBLIC env vars (pre-build verification) ==="
+          echo "CLERK_KEY length: ${#EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY}"
+          echo "SUPABASE_URL length: ${#EXPO_PUBLIC_SUPABASE_URL}"
+          echo "SUPABASE_ANON_KEY length: ${#EXPO_PUBLIC_SUPABASE_ANON_KEY}"
+          echo "OPENROUTER_KEY length: ${#EXPO_PUBLIC_OPENROUTER_API_KEY}"
+          echo ""
+          if [ -z "$EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY" ]; then
+            echo "❌ FATAL: EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY is empty!"
+            exit 1
+          fi
+          if [ -z "$EXPO_PUBLIC_SUPABASE_URL" ]; then
+            echo "❌ FATAL: EXPO_PUBLIC_SUPABASE_URL is empty!"
+            exit 1
+          fi
+          echo "✅ All EXPO_PUBLIC vars present"
+
       - name: Build unsigned archive
         env:
           EXPO_ROUTER_DISABLE_RN_NAVIGATION_CHECK: "1"
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          EXPO_PUBLIC_OPENROUTER_API_KEY: ${{ secrets.EXPO_PUBLIC_OPENROUTER_API_KEY }}
         run: |
           xcodebuild \
             -workspace ios/RELICA.xcworkspace \

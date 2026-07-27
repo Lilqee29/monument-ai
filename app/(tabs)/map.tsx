@@ -10,7 +10,7 @@ import {
   StatusBar,
   ActivityIndicator
 } from 'react-native';
-import MapView, { Marker, Callout, Circle, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, Callout, Circle, Polyline } from 'react-native-maps';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
@@ -373,8 +373,7 @@ export default function MapScreen() {
         showsUserLocation
         showsPointsOfInterest={false}
         showsBuildings={false}
-        mapType={mapType}
-        customMapStyle={mapType === 'standard' ? (colorScheme === 'light' ? [] : (colorScheme === 'dark' ? darkMapStyle : (mapType === 'standard' ? darkMapStyle : []))) : []}
+        mapType={mapType === 'satellite' ? 'satellite' : 'standard'}
       >
         {/* ── Explored area circles (coverage blobs) ── */}
         {showExplored &&
@@ -919,25 +918,9 @@ const styles = StyleSheet.create({
   },
 });
 
-// ─── Dark map style ───────────────────────────────────────────────────────────
-
-const darkMapStyle = [
-  { elementType: 'geometry', stylers: [{ color: '#0e0e0e' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#7a7a7a' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#0e0e0e' }] },
-  { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#222222' }] },
-  { featureType: 'landscape.man_made', elementType: 'geometry.fill', stylers: [{ color: '#151515' }] },
-  { featureType: 'landscape.natural', elementType: 'geometry.fill', stylers: [{ color: '#0a0a0a' }] },
-  { featureType: 'poi', elementType: 'geometry.fill', stylers: [{ color: '#111111' }] },
-  { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#444444' }] },
-  { featureType: 'poi.park', elementType: 'geometry.fill', stylers: [{ color: '#080808' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#1a1a1a' }] },
-  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#555555' }] },
-  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#202020' }] },
-  { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#111111' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#000000' }] },
-  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#333333' }] },
-];
+// ─── Dark map style (disabled — Apple Maps ignores customMapStyle) ────────────
+// Kept as reference for future Google Maps integration
+const darkMapStyle: any[] = [];
 
 function QuestTaskRow({ task }: { task: any }) {
   const [showHint, setShowHint] = useState(false);

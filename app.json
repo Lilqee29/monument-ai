@@ -68,7 +68,8 @@
       "expo-image",
       "expo-sharing",
       "expo-status-bar",
-      "expo-web-browser"
+      "expo-web-browser",
+      "react-native-maps"
     ],
     "experiments": {
       "typedRoutes": true,

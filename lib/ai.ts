@@ -4,52 +4,52 @@ export const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions
 export const OPENROUTER_API_KEY = process.env.EXPO_PUBLIC_OPENROUTER_API_KEY || '';
 
 /**
- * Verified free model lists — March 2026.
- * All models confirmed $0 on OpenRouter as of March 7, 2026.
- * Source: costgoat.com/pricing/openrouter-free-models (27 free models listed)
+ * Verified free model lists — July 2026.
+ * All models confirmed $0 on OpenRouter as of July 27, 2026.
+ * Source: OpenRouter API /api/v1/models (18 free models total)
  *
  * TEXT_MODELS — ordered fastest → most capable:
- *   - llama-3.2-3b    : tiny, ~1-2s, confirmed free ✓
- *   - liquid/lfm-1.2b : tiny instruct, ~1-2s, confirmed free ✓
- *   - gemma-3-4b      : fast + vision, confirmed free ✓
- *   - nvidia nemotron-9b: tools support, confirmed free ✓
- *   - llama-3.3-70b   : best quality text, confirmed free ✓
- *   - mistral-small   : solid fallback, confirmed free ✓
- *   - gemma-3-27b     : last resort text, confirmed free ✓
+ *   - nemotron-nano-9b-v2   : ~1-2s, smallest, 128K ctx
+ *   - nemotron-3-nano-30b   : ~2-4s, mid, 256K ctx
+ *   - nemotron-3-super-120b : ~4-8s, large, 262K ctx
+ *   - gpt-oss-20b           : ~4-8s, OpenAI, 131K ctx
+ *   - nemotron-3-ultra-550b : ~8-15s, huge, 1M ctx
  *
  * VISION_MODELS — must support image input:
- *   - gemma-3-4b      : smallest vision model, confirmed free ✓
- *   - gemma-3-12b     : mid vision, confirmed free ✓
- *   - nvidia/nemotron-nano-12b-vl : vision + tools, confirmed free ✓
- *   - mistral-small   : vision + tools, confirmed free ✓
- *   - gemma-3-27b     : highest quality vision, confirmed free ✓
+ *   - nemotron-nano-12b-v2-vl : ~3-5s, fastest vision
+ *   - nemotron-3.5-content-safety : ~4-6s, 128K ctx
+ *   - nemotron-3-nano-omni-30b : ~5-8s, reasoning + vision + audio
+ *   - gemma-4-26b-a4b-it : ~5-10s, 262K ctx, Google
+ *   - gemma-4-31b-it : ~8-14s, best free vision quality
+ *   - openrouter/free : ~5-12s, router picks best free model
  *
- * REMOVED (not in current free list):
- *   - microsoft/phi-3-mini → NOT free on OpenRouter anymore
- *   - meta-llama/llama-3.2-11b-vision → replaced by nemotron-12b-vl
- *   - qwen3-thinking variants → too slow (reasoning overhead)
- *   - openrouter/auto → non-deterministic, unpredictable latency
+ * REMOVED (no longer free as of July 2026):
+ *   - meta-llama/llama-3.2-3b-instruct:free → removed from free tier
+ *   - liquid/lfm-2.5-1.2b-instruct:free → removed from free tier
+ *   - google/gemma-3-4b-it:free → replaced by gemma-4
+ *   - google/gemma-3-12b-it:free → replaced by gemma-4
+ *   - google/gemma-3-27b-it:free → replaced by gemma-4
+ *   - meta-llama/llama-3.3-70b-instruct:free → removed from free tier
+ *   - mistralai/mistral-small-3.1-24b-instruct:free → removed from free tier
  */
 
 // ── TEXT: fastest first ──────────────────────────────────────────────────────
 export const TEXT_MODELS: string[] = [
-  'meta-llama/llama-3.2-3b-instruct:free',        // ~1-2s — smallest, great JSON
-  'liquid/lfm-2.5-1.2b-instruct:free',            // ~1-2s — ultra tiny, fast
-  'google/gemma-3-4b-it:free',                    // ~2-3s — small Gemma, reliable
-  'nvidia/nemotron-nano-9b-v2:free',              // ~3-4s — tools support, solid
-  'google/gemma-3-12b-it:free',                   // ~4-6s — mid-size fallback
-  'meta-llama/llama-3.3-70b-instruct:free',       // ~6-10s — best free text quality
-  'mistralai/mistral-small-3.1-24b-instruct:free',// ~5-8s — solid European fallback
-  'google/gemma-3-27b-it:free',                   // ~8-12s — last resort
+  'nvidia/nemotron-nano-9b-v2:free',              // ~1-2s — smallest, 128K ctx
+  'nvidia/nemotron-3-nano-30b-a3b:free',          // ~2-4s — mid, 256K ctx
+  'nvidia/nemotron-3-super-120b-a12b:free',       // ~4-8s — large, 262K ctx
+  'openai/gpt-oss-20b:free',                      // ~4-8s — OpenAI, 131K ctx
+  'nvidia/nemotron-3-ultra-550b-a55b:free',       // ~8-15s — huge, 1M ctx
 ];
 
 // ── VISION: image-capable models only ────────────────────────────────────────
 export const VISION_MODELS: string[] = [
-  'google/gemma-3-4b-it:free',                    // ~3-5s — fastest vision, confirmed free
-  'google/gemma-3-12b-it:free',                   // ~5-7s — mid vision quality
-  'nvidia/nemotron-nano-12b-v2-vl:free',          // ~5-8s — vision + tools, NVIDIA
-  'mistralai/mistral-small-3.1-24b-instruct:free',// ~6-10s — vision + tools
-  'google/gemma-3-27b-it:free',                   // ~9-14s — best free vision quality
+  'nvidia/nemotron-nano-12b-v2-vl:free',          // ~3-5s — fastest vision
+  'nvidia/nemotron-3.5-content-safety:free',       // ~4-6s — 128K ctx
+  'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free', // ~5-8s — reasoning + vision
+  'google/gemma-4-26b-a4b-it:free',               // ~5-10s — 262K ctx, Google
+  'google/gemma-4-31b-it:free',                   // ~8-14s — best free vision
+  'openrouter/free',                              // ~5-12s — router picks best
 ];
 
 // ─── In-memory response cache ─────────────────────────────────────────────────

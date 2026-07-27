@@ -36,7 +36,7 @@ jobs:
 
       - name: Patch expo-modules-jsi for Swift 6.2 compatibility
         run: |
-          # ── Fix 1: Downgrade SPM tools version to avoid Swift 6 strict mode entirely ──
+          # ── Downgrade SPM tools version to avoid Swift 6 strict mode entirely ──
           PKG="node_modules/expo-modules-jsi/apple/Package.swift"
           if [ -f "$PKG" ]; then
             echo "=== Original Package.swift first line ==="
@@ -48,24 +48,7 @@ jobs:
             head -1 "$PKG"
             echo ""
           fi
-
-          # ── Fix 2: Replace the guard line to avoid abs() entirely in Swift 6.2 ──
-          FILE="node_modules/expo-modules-jsi/apple/Sources/ExpoModulesJSI/Coding/JavaScriptCodable+Date.swift"
-          if [ -f "$FILE" ]; then
-            echo "=== Full context around line 53 ==="
-            sed -n '50,56p' "$FILE"
-            echo ""
-            # Avoid abs() entirely — Swift 6.2 can't resolve the overload
-            # Original: guard milliseconds.isFinite, abs(milliseconds) <= maxJavaScriptDateMilliseconds else {
-            # New: check range directly without abs()
-            perl -pi -e "s{guard milliseconds\\.isFinite, abs\\(milliseconds\\) <= maxJavaScriptDateMilliseconds else \\{}{guard milliseconds.isFinite, milliseconds >= -maxJavaScriptDateMilliseconds, milliseconds <= maxJavaScriptDateMilliseconds else {}" "$FILE"
-            echo "=== Patched context around line 53 ==="
-            sed -n '50,56p' "$FILE"
-            echo ""
-            echo "All patches applied."
-          else
-            echo "File not found, skipping patch."
-          fi
+          echo "Patch applied."
 
       - name: Prebuild native iOS project
         run: npx expo prebuild --platform ios --clean

@@ -42,28 +42,25 @@ jobs:
             echo "=== Original Package.swift first line ==="
             head -1 "$PKG"
             echo ""
-            # Downgrade swift-tools-version:6.0 → swift-tools-version:5.9
-            # This disables Swift 6 strict concurrency and avoids abs() type inference issues
-            sed -i.bak 's/swift-tools-version:6\./swift-tools-version:5./g' "$PKG"
+            # The file uses "// swift-tools-version: 6.2" (with // prefix and space)
+            perl -pi -e 's/swift-tools-version:\s*6\.\d+/swift-tools-version: 5.9/' "$PKG"
             echo "=== Patched Package.swift first line ==="
             head -1 "$PKG"
             echo ""
           fi
 
-          # ── Fix 2: Also fix the abs() call directly in case SPM downgrade isn't enough ──
+          # ── Fix 2: Replace the guard line to avoid abs() entirely in Swift 6.2 ──
           FILE="node_modules/expo-modules-jsi/apple/Sources/ExpoModulesJSI/Coding/JavaScriptCodable+Date.swift"
           if [ -f "$FILE" ]; then
-            echo "=== Original line 53 ==="
-            sed -n '53p' "$FILE"
+            echo "=== Full context around line 53 ==="
+            sed -n '50,56p' "$FILE"
             echo ""
-            echo "Patching $FILE for Swift 6.2 type inference..."
-            # Cast the argument INSIDE abs() to resolve type ambiguity in Swift 6.2
-            # WRONG: (abs(milliseconds) as Double) — casts result, abs() itself is still ambiguous
-            # RIGHT: abs(milliseconds as Double) — tells Swift which abs() overload to use
-            sed -i.bak 's/abs(milliseconds)/abs(milliseconds as Double)/' "$FILE"
-            echo ""
-            echo "=== Patched line 53 ==="
-            sed -n '53p' "$FILE"
+            # Avoid abs() entirely — Swift 6.2 can't resolve the overload
+            # Original: guard milliseconds.isFinite, abs(milliseconds) <= maxJavaScriptDateMilliseconds else {
+            # New: check range directly without abs()
+            perl -pi -e "s{guard milliseconds\\.isFinite, abs\\(milliseconds\\) <= maxJavaScriptDateMilliseconds else \\{}{guard milliseconds.isFinite, milliseconds >= -maxJavaScriptDateMilliseconds, milliseconds <= maxJavaScriptDateMilliseconds else {}" "$FILE"
+            echo "=== Patched context around line 53 ==="
+            sed -n '50,56p' "$FILE"
             echo ""
             echo "All patches applied."
           else

@@ -53,6 +53,8 @@ jobs:
           fi
 
       - name: Prebuild native iOS project
+        env:
+          EXPO_ROUTER_DISABLE_RN_NAVIGATION_CHECK: "1"
         run: npx expo prebuild --platform ios --clean
 
       - name: Install CocoaPods
@@ -61,6 +63,8 @@ jobs:
           pod install --repo-update
 
       - name: Build unsigned archive
+        env:
+          EXPO_ROUTER_DISABLE_RN_NAVIGATION_CHECK: "1"
         run: |
           xcodebuild \
             -workspace ios/RELICA.xcworkspace \

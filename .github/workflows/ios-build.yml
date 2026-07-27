@@ -36,16 +36,18 @@ jobs:
 
       - name: Patch expo-modules-jsi for Swift 6.2 compatibility
         run: |
-          # ── Downgrade SPM tools version to avoid Swift 6 strict mode entirely ──
+          # ── Force Swift 5 language mode in expo-modules-jsi Package.swift ──
+          # Can't downgrade tools version (uses Swift 6 APIs like swiftLanguageModes)
+          # Instead, change the language mode from .v6 to .v5
           PKG="node_modules/expo-modules-jsi/apple/Package.swift"
           if [ -f "$PKG" ]; then
-            echo "=== Original Package.swift first line ==="
-            head -1 "$PKG"
+            echo "=== Relevant lines from Package.swift ==="
+            grep -n "swiftLanguageModes\|swift-tools-version" "$PKG" | head -5
             echo ""
-            # The file uses "// swift-tools-version: 6.2" (with // prefix and space)
-            perl -pi -e 's/swift-tools-version:\s*6\.\d+/swift-tools-version: 5.9/' "$PKG"
-            echo "=== Patched Package.swift first line ==="
-            head -1 "$PKG"
+            # Change swiftLanguageModes: [.v6] → [.v5]
+            perl -pi -e 's/swiftLanguageModes:\s*\[\.v6\]/swiftLanguageModes: [.v5]/' "$PKG"
+            echo "=== After patch ==="
+            grep -n "swiftLanguageModes" "$PKG" | head -5
             echo ""
           fi
           echo "Patch applied."

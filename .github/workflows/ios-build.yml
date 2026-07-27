@@ -34,6 +34,18 @@ jobs:
       - name: Install JS deps
         run: npm install --legacy-peer-deps
 
+      - name: Patch expo-modules-jsi for Swift 6.2 compatibility
+        run: |
+          FILE="node_modules/expo-modules-jsi/apple/Sources/ExpoModulesJSI/Coding/JavaScriptCodable+Date.swift"
+          if [ -f "$FILE" ]; then
+            echo "Patching $FILE for Swift 6.2 type inference..."
+            # Fix: add explicit type annotation to abs() call to resolve ambiguity in Swift 6.2
+            sed -i.bak 's/abs(milliseconds) <= maxJavaScriptDateMilliseconds/(abs(milliseconds) as Double) <= maxJavaScriptDateMilliseconds/' "$FILE"
+            echo "Patch applied."
+          else
+            echo "File not found, skipping patch."
+          fi
+
       - name: Prebuild native iOS project
         run: npx expo prebuild --platform ios --clean
 

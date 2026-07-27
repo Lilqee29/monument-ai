@@ -77,24 +77,35 @@ jobs:
         run: |
           PODFILE="ios/Podfile"
           if [ -f "$PODFILE" ]; then
-            # Add post_install hook to force Swift 5 for all pods if not already present
-            if ! grep -q 'swift_version.*5' "$PODFILE" 2>/dev/null; then
-              cat >> "$PODFILE" << 'HOOK'
-
-          post_install do |installer|
-            installer.pods_project.targets.each do |target|
-              target.build_configurations.each do |config|
-                config.build_settings['SWIFT_VERSION'] = '5'
+            echo "=== Post-install block ==="
+            awk '/post_install do/,/^end/' "$PODFILE"
+            echo ""
+            # Append SWIFT_VERSION inside the EXISTING post_install's inner loop
+            # Find the last config.build_settings line before the 'end' in post_install and add after it
+            ruby -e '
+              lines = File.readlines("'"$PODFILE"'")
+              in_post = false
+              insert_idx = nil
+              lines.each_with_index do |line, i|
+                in_post = true if line =~ /post_install\s+do/
+                if in_post && line =~ /config\.build_settings/
+                  insert_idx = i
+                end
+                if in_post && line.strip == "end"
+                  break
+                end
               end
-            end
-          end
-          HOOK
-              echo "Added Swift 5 post_install hook to Podfile"
-            else
-              echo "Swift 5 setting already in Podfile"
-            fi
-          else
-            echo "Podfile not found, skipping."
+              if insert_idx
+                indent = lines[insert_idx][/^(\s*)/, 1] || "        "
+                lines.insert(insert_idx + 1, "#{indent}config.build_settings[\"SWIFT_VERSION\"] = \"5\"\n")
+                File.write("'"$PODFILE"'", lines.join)
+                puts "Injected SWIFT_VERSION=5 after line #{insert_idx+1}"
+              else
+                puts "Could not find insertion point in post_install"
+              end
+            '
+            echo "=== Verifying ==="
+            grep -n "SWIFT_VERSION" "$PODFILE" || echo "WARNING: not found"
           fi
 
       - name: Install CocoaPods

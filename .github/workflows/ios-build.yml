@@ -5,7 +5,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -18,12 +18,18 @@ jobs:
 
       - name: Select latest available Xcode
         run: |
-          ls /Applications | grep Xcode
+          echo "=== All Xcode versions on runner ==="
+          ls -d /Applications/Xcode*.app 2>/dev/null || true
+          echo ""
           LATEST=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -n 1)
           if [ -z "$LATEST" ]; then LATEST="/Applications/Xcode.app"; fi
           echo "Selecting $LATEST"
           sudo xcode-select -s "$LATEST"
           xcodebuild -version
+          swift --version
+          echo ""
+          echo "=== Verifying Swift tools version ==="
+          swift -version | head -1
 
       - name: Install JS deps
         run: npm install --legacy-peer-deps

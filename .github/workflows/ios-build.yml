@@ -34,61 +34,26 @@ jobs:
       - name: Install JS deps
         run: npm install --legacy-peer-deps
 
-      - name: Patch expo-modules-jsi for Swift 6.2 compatibility
+      - name: Fix abs() ambiguity in expo-modules-jsi (upstream bug)
         run: |
-          # ── Force Swift 5 language mode in expo-modules-jsi Package.swift ──
-          # Can't downgrade tools version (uses Swift 6 APIs like swiftLanguageModes)
-          # Instead, change the language mode from .v6 to .v5
-          PKG="node_modules/expo-modules-jsi/apple/Package.swift"
-          if [ -f "$PKG" ]; then
-            echo "=== Relevant lines from Package.swift ==="
-            grep -n "swiftLanguageModes\|swift-tools-version" "$PKG" | head -5
+          # ── Expo upstream bug: expo-modules-jsi 57.0.4, JavaScriptCodable+Date.swift:53 ──
+          # abs(milliseconds) is ambiguous when Darwin C abs + Swift stdlib abs are both in scope.
+          # Fix: replace abs() with .magnitude (FloatingPoint property, no overload ambiguity).
+          # See: https://github.com/expo/expo/issues/47957
+          FILE="node_modules/expo-modules-jsi/apple/Sources/ExpoModulesJSI/Coding/JavaScriptCodable+Date.swift"
+          if [ -f "$FILE" ]; then
+            echo "=== Before patch (line ~53) ==="
+            grep -n 'abs(milliseconds)' "$FILE" || echo "Pattern not found — file may differ from expected"
             echo ""
-            # Change swiftLanguageModes: [.v6] → [.v5]
-            perl -pi -e 's/swiftLanguageModes:\s*\[\.v6\]/swiftLanguageModes: [.v5]/' "$PKG"
+            perl -pi -e 's/abs\(milliseconds\)/milliseconds.magnitude/' "$FILE"
             echo "=== After patch ==="
-            grep -n "swiftLanguageModes" "$PKG" | head -5
-            echo ""
+            grep -n 'magnitude\|abs(milliseconds)' "$FILE" || true
+          else
+            echo "File not found, skipping patch."
           fi
-          echo "Patch applied."
 
       - name: Prebuild native iOS project
         run: npx expo prebuild --platform ios --clean
-
-      - name: Patch Podfile to force Swift 5 language mode
-        run: |
-          PODFILE="ios/Podfile"
-          if [ -f "$PODFILE" ]; then
-            echo "=== Post-install block ==="
-            awk '/post_install do/,/^end/' "$PODFILE"
-            echo ""
-            # Append SWIFT_VERSION inside the EXISTING post_install's inner loop
-            # Find the last config.build_settings line before the 'end' in post_install and add after it
-            ruby -e '
-              lines = File.readlines("'"$PODFILE"'")
-              in_post = false
-              insert_idx = nil
-              lines.each_with_index do |line, i|
-                in_post = true if line =~ /post_install\s+do/
-                if in_post && line =~ /config\.build_settings/
-                  insert_idx = i
-                end
-                if in_post && line.strip == "end"
-                  break
-                end
-              end
-              if insert_idx
-                indent = lines[insert_idx][/^(\s*)/, 1] || "        "
-                lines.insert(insert_idx + 1, "#{indent}config.build_settings[\"SWIFT_VERSION\"] = \"5\"\n")
-                File.write("'"$PODFILE"'", lines.join)
-                puts "Injected SWIFT_VERSION=5 after line #{insert_idx+1}"
-              else
-                puts "Could not find insertion point in post_install"
-              end
-            '
-            echo "=== Verifying ==="
-            grep -n "SWIFT_VERSION" "$PODFILE" || echo "WARNING: not found"
-          fi
 
       - name: Install CocoaPods
         run: |
@@ -107,8 +72,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            DEVELOPMENT_TEAM="" \
-            OTHER_SWIFT_FLAGS="-swift-version 5"
+            DEVELOPMENT_TEAM=""
 
       - name: Package IPA (unsigned)
         run: |

@@ -33,7 +33,7 @@ export function ExpeditionPlayback({ onClose }: ExpeditionPlaybackProps) {
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 9999,
     backgroundColor: 'rgba(0,0,0,0.85)',
     padding: 20,

@@ -78,7 +78,7 @@ export function VisitedCallout({ session, onOpen }: VisitedCalloutProps) {
         />
         <LinearGradient
           colors={['transparent', 'rgba(0,0,0,0.8)']}
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
         />
         <View style={styles.calloutCountryPill}>
           <Text style={styles.calloutCountryText}>{session.location_country}</Text>

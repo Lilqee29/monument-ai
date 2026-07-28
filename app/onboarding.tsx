@@ -215,7 +215,7 @@ export default function OnboardingScreen() {
       <StatusBar barStyle="light-content" />
       <LinearGradient 
         colors={[scene.bgFrom, scene.bgTo]} 
-        style={StyleSheet.absoluteFillObject} 
+        style={StyleSheet.absoluteFill} 
       />
       
       {particles.map((p, i) => (

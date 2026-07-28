@@ -71,7 +71,7 @@ function EnvVarErrorScreen() {
 
         <Text style={localStyles.section}>MODULE-SCOPE ERRORS:</Text>
         {moduleErrors.length > 0 ? (
-          moduleErrors.map((e, i) => (
+          moduleErrors.map((e: { phase: string; message: string }, i: number) => (
             <Text key={i} style={localStyles.errorLine} selectable>
               [{e.phase}] {e.message}
             </Text>

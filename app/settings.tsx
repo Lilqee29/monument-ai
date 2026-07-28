@@ -290,7 +290,7 @@ function PasswordModal({
     </Modal>
   );
 }
-// Workaround for StyleSheet.absoluteFillObject in plain object style
+// Workaround for StyleSheet.absoluteFill in plain object style
 const StyleSheet_abs = {
   position: 'absolute' as const,
   top: 0, left: 0, right: 0, bottom: 0,

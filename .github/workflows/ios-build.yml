@@ -34,8 +34,31 @@ jobs:
       - name: Install JS deps
         run: npm install --legacy-peer-deps
 
+      # sf-symbols-typescript 2.2.0 has a truncated .d.ts file (line 4630: unterminated string literal).
+      # This is a parse error (TS1002) that skipLibCheck cannot suppress.
+      # Fix: append the missing closing quote + semicolon so TS can parse the file.
+      - name: Fix truncated sf-symbols-typescript declaration (upstream bug)
+        run: |
+          FILE="node_modules/sf-symbols-typescript/dist/index.d.ts"
+          if [ -f "$FILE" ]; then
+            LAST=$(tail -1 "$FILE")
+            echo "Last line before patch: '$LAST'"
+            if echo "$LAST" | grep -q "^| '"; then
+              echo "'$FILE' ends with unterminated string — patching"
+              # Append ' (close the string literal) and ; (terminate the union type)
+              printf "'" >> "$FILE"
+              printf ";\n" >> "$FILE"
+              echo "Patched. Last 3 lines:"
+              tail -3 "$FILE"
+            else
+              echo "File looks OK, skipping patch."
+            fi
+          else
+            echo "File not found, skipping patch."
+          fi
+
       - name: TypeScript type check
-        run: npx tsc --noEmit 2>&1 || echo "⚠ TypeScript errors found (non-blocking for now)"
+        run: npx tsc --noEmit
 
       - name: Fix abs() ambiguity in expo-modules-jsi (upstream bug)
         run: |

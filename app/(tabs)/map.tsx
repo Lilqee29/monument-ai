@@ -211,7 +211,7 @@ export default function MapScreen() {
         showsBuildings={false}
         mapType={mapType === 'satellite' ? 'satellite' : 'standard'}
         onRegionChangeComplete={handleRegionChange}
-        // @ts-expect-error — react-native-maps supports onError at runtime but omits it from MapViewProps
+        // @ts-ignore — react-native-maps onError works at runtime but type availability varies by platform/version
         onError={(e: NativeSyntheticEvent<{ message?: string }>) => {
           console.error('[RELICA] MapView error:', e.nativeEvent);
           setMapError(e.nativeEvent?.message || 'Map failed to load');

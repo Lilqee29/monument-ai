@@ -67,7 +67,7 @@ export class CrashReporter extends Component<Props, State> {
 
             <Text style={styles.section}>MODULE-SCOPE ERRORS:</Text>
             {global.__CRASH_REPORTER_ERRORS__?.length ? (
-              global.__CRASH_REPORTER_ERRORS__.map((e, i) => (
+              global.__CRASH_REPORTER_ERRORS__.map((e: ModuleError, i: number) => (
                 <Text key={i} style={styles.errorLine}>
                   [{e.phase}] {e.message}
                   {e.stack ? `\n${e.stack}` : ''}

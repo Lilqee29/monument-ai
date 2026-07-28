@@ -22,6 +22,8 @@ import { LanguageProvider } from '@/lib/languageContext';
 import { useColorScheme } from 'nativewind';
 import { setupNotifications } from '@/lib/notifications';
 import { CrashReporter, recordModuleError } from '@/components/CrashReporter';
+import { ToastProvider } from '@/components/Toast';
+import { DemoProvider, useDemoMode } from '@/lib/demoMode';
 
 import "../global.css";
 
@@ -45,14 +47,10 @@ export const unstable_settings = {
 // ── Error display shown when env vars are missing ────────────────────
 function EnvVarErrorScreen() {
   const envSnapshot = {
-    EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? '(undefined)',
-    EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL ?? '(undefined)',
-    EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
-      ? `${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY.substring(0, 12)}...`
-      : '(undefined)',
-    EXPO_PUBLIC_OPENROUTER_API_KEY: process.env.EXPO_PUBLIC_OPENROUTER_API_KEY
-      ? `${process.env.EXPO_PUBLIC_OPENROUTER_API_KEY.substring(0, 12)}...`
-      : '(undefined)',
+    EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ? '(set)' : '(missing)',
+    EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL ? '(set)' : '(missing)',
+    EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ? '(set)' : '(missing)',
+    EXPO_PUBLIC_OPENROUTER_API_KEY: process.env.EXPO_PUBLIC_OPENROUTER_API_KEY ? '(set)' : '(missing)',
   };
   const moduleErrors = global.__CRASH_REPORTER_ERRORS__ ?? [];
 
@@ -92,14 +90,23 @@ function AuthRedirectHandler() {
   const { user } = useUser();
   const segments = useSegments();
   const router = useRouter();
+  const { isDemoMode, isLoading: demoLoading } = useDemoMode();
 
   useEffect(() => {
-    if (!isLoaded || !segments?.[0]) return;
+    if (!isLoaded || !segments?.[0] || demoLoading) return;
 
     try {
       const inAuthGroup = segments[0] === '(auth)';
       const inTabsGroup = segments[0] === '(tabs)';
       const inOnboarding = segments[0] === 'onboarding';
+
+      // Demo mode — skip all auth, go straight to tabs
+      if (isDemoMode) {
+        if (inAuthGroup || inOnboarding) {
+          router.replace('/(tabs)');
+        }
+        return;
+      }
 
       if (isSignedIn && user) {
         const onboardingCompleted = user.unsafeMetadata?.onboardingCompleted;
@@ -122,7 +129,7 @@ function AuthRedirectHandler() {
     } catch (e) {
       console.warn("Navigation redirect failed:", e);
     }
-  }, [isSignedIn, isLoaded, segments, user]);
+  }, [isSignedIn, isLoaded, segments, user, isDemoMode, demoLoading]);
 
   return null;
 }
@@ -214,12 +221,16 @@ export default function RootLayout() {
       {publishableKey ? (
         <ClerkProvider tokenCache={tokenCache} publishableKey={publishableKey}>
           <ClerkLoaded>
-            <ThemeInitializer />
-            <LanguageProvider>
-              <QuestProvider>
-                <RootLayoutNav />
-              </QuestProvider>
-            </LanguageProvider>
+            <DemoProvider>
+              <ToastProvider>
+                <ThemeInitializer />
+                <LanguageProvider>
+                  <QuestProvider>
+                    <RootLayoutNav />
+                  </QuestProvider>
+                </LanguageProvider>
+              </ToastProvider>
+            </DemoProvider>
           </ClerkLoaded>
         </ClerkProvider>
       ) : (

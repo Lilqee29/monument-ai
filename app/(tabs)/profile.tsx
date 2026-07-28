@@ -17,6 +17,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { useLanguage } from '@/lib/languageContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import { OPENROUTER_API_URL, OPENROUTER_API_KEY, TEXT_MODELS } from '@/lib/ai';
+import { useToast } from '@/components/Toast';
+import { useDemoMode } from '@/lib/demoMode';
+import { DailyMonumentCard } from '@/components/DailyMonumentCard';
 
 // ─── Streak helpers (self-contained, no external lib needed) ──────────────────
 // These functions compute the streak directly from session dates so they always
@@ -184,6 +187,8 @@ export default function ProfileScreen() {
   const auth = useAuth();
   const router = useRouter();
   const { t } = useLanguage();
+  const { showToast } = useToast();
+  const { isDemoMode, user: demoUser, sessions: demoSessions, exitDemoMode } = useDemoMode();
 
   const [sessions, setSessions] = useState<Session[]>([]);
   const [nationsCount, setNationsCount] = useState(0);
@@ -205,8 +210,12 @@ export default function ProfileScreen() {
   const [showFact, setShowFact] = useState(false);
 
   useEffect(() => {
+    if (isDemoMode) {
+      setLoading(false);
+      return;
+    }
     if (auth.isLoaded && auth.userId) fetchStats();
-  }, [auth.userId, auth.isLoaded]);
+  }, [auth.userId, auth.isLoaded, isDemoMode]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -255,8 +264,8 @@ export default function ProfileScreen() {
       try {
         setLoading(true);
         await user?.setProfileImage({ file: `data:image/jpeg;base64,${result.assets[0].base64}` });
-        Alert.alert('✓', 'Profile image updated!');
-      } catch { Alert.alert('Error', 'Failed to update profile image.'); }
+        showToast('Profile image updated!', 'success');
+      } catch { showToast('Failed to update profile image.', 'error'); }
       finally { setLoading(false); }
     }
   };
@@ -291,7 +300,7 @@ export default function ProfileScreen() {
       const qs = await generateMiniQuiz();
       setQuizQuestions(qs);
       setQuizActive(true);
-    } catch { Alert.alert('Error', 'Could not load quiz. Try again.'); }
+    } catch { showToast('Could not load quiz. Try again.', 'error'); }
     finally { setQuizLoading(false); }
   };
 
@@ -337,6 +346,87 @@ export default function ProfileScreen() {
 
   const titles = getTitles();
   const currentQ = quizQuestions[quizIdx];
+
+  // ── Demo Mode Render ──────────────────────────────────────────────────────────
+
+  if (isDemoMode) {
+    const demoStreak = { currentStreak: demoUser.streak, longestStreak: demoUser.longestStreak, totalDays: 15, lastScanDate: new Date().toISOString().slice(0, 10) };
+    const demoTitles = getTitles();
+    const demoMyXP = demoUser.xp;
+    const demoLevel = Math.floor(demoMyXP / 2000) + 1;
+
+    return (
+      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+        <View style={styles.container}>
+          {/* Header */}
+          <View style={styles.headerRow}>
+            <View>
+              <Text style={styles.headerTitle}>RELICA</Text>
+              <Text style={styles.headerSub}>{t('craftedFor')}</Text>
+            </View>
+            <View style={styles.headerActions}>
+              <TouchableOpacity onPress={() => router.push('/settings')} style={styles.iconBtn}>
+                <Settings color="#c9a84c" size={20} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Demo Banner */}
+          <Animated.View entering={FadeInDown.duration(500)} style={[styles.userCard, { borderColor: 'rgba(201,168,76,0.3)' }]}>
+            <View style={styles.avatarContainer}>
+              <View style={[styles.avatar, { backgroundColor: '#c9a84c22', borderColor: '#c9a84c' }]}>
+                <Text style={styles.avatarText}>D</Text>
+              </View>
+            </View>
+            <Text style={styles.userName}>{demoUser.displayName}</Text>
+            <Text style={[styles.userRole, { color: '#c9a84c' }]}>DEMO MODE</Text>
+          </Animated.View>
+
+          {/* Daily Monument */}
+          <DailyMonumentCard />
+
+          {/* Stats */}
+          <Animated.View entering={FadeInDown.delay(200).duration(600)} style={styles.statsRow}>
+            <View style={styles.statBox}>
+              <Text style={styles.statValue}>{demoMyXP}</Text>
+              <Text style={styles.statLabel}>XP</Text>
+            </View>
+            <View style={styles.statBox}>
+              <Text style={styles.statValue}>{demoLevel}</Text>
+              <Text style={styles.statLabel}>Level</Text>
+            </View>
+            <View style={styles.statBox}>
+              <Text style={styles.statValue}>{demoUser.sites}</Text>
+              <Text style={styles.statLabel}>Sites</Text>
+            </View>
+            <View style={styles.statBox}>
+              <Text style={styles.statValue}>{demoUser.nations}</Text>
+              <Text style={styles.statLabel}>Nations</Text>
+            </View>
+          </Animated.View>
+
+          {/* Streak */}
+          <Animated.View entering={FadeInDown.delay(300).duration(600)} style={styles.streakCard}>
+            <Text style={styles.streakEmoji}>{streakEmoji(demoStreak.currentStreak)}</Text>
+            <View style={styles.streakInfo}>
+              <Text style={styles.streakTitle}>{streakTitle(demoStreak.currentStreak)}</Text>
+              <Text style={styles.streakSub}>{demoStreak.currentStreak}-day streak · Best: {demoStreak.longestStreak}</Text>
+            </View>
+          </Animated.View>
+
+          {/* Exit Demo */}
+          <TouchableOpacity
+            onPress={async () => { await exitDemoMode(); router.replace('/'); }}
+            style={[styles.signOutBtn, { borderColor: '#ff4444' }]}
+          >
+            <Text style={[styles.signOutText, { color: '#ff4444' }]}>Exit Demo Mode</Text>
+          </TouchableOpacity>
+
+          <View style={{ height: 100 }} />
+        </View>
+      </ScrollView>
+    );
+  }
 
   // ── Render ───────────────────────────────────────────────────────────────────
 

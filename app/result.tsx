@@ -13,6 +13,7 @@ import * as Speech from 'expo-speech';
 import { useLanguage, languageCodeMap } from '@/lib/languageContext';
 import { recordScan } from '@/lib/streak';
 import { sendNotification } from '@/lib/notifications';
+import * as Haptics from 'expo-haptics';
 
 type Tab = 'history' | 'details' | 'ask';
 
@@ -76,6 +77,7 @@ export default function ResultScreen() {
         });
         setShowConfetti(true);
         questVindicated = true;
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Alert.alert(t('objectiveReached') + ` ✨ (+${earnedXp} XP)`, qResult.reason);
       }
       
@@ -286,6 +288,7 @@ const proceedWithSave = async () => {
 
     // ── 8. Done ────────────────────────────────────────────────────────────
     setShowConfetti(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setTimeout(() => {
       router.replace('/(tabs)/gallery');
     }, 2500);

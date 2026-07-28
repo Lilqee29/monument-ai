@@ -6,6 +6,7 @@ import { supabase, createClerkSupabaseClient } from '@/lib/supabase';
 import { ChevronLeft, Zap, Globe, Crown, Trophy, Medal } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
+import { DailyMonumentCard } from '@/components/DailyMonumentCard';
 
 interface LeaderboardEntry {
   user_id: string;
@@ -107,6 +108,9 @@ export default function LeaderboardScreen() {
         </View>
       ) : (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+
+          {/* Monument of the Day */}
+          <DailyMonumentCard />
 
           {entries.length >= 3 && (
             <View style={styles.podium}>

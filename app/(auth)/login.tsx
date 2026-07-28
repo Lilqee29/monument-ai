@@ -2,9 +2,10 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator, ImageBackground, Dimensions, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { useSignIn, useOAuth } from '@clerk/clerk-expo';
 import { useRouter, Link } from 'expo-router';
-import { ChevronLeft } from 'lucide-react-native';
+import { ChevronLeft, Compass } from 'lucide-react-native';
 import { useAssets } from 'expo-asset';
 import * as WebBrowser from 'expo-web-browser';
+import { useDemoMode } from '@/lib/demoMode';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -16,6 +17,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const { enterDemoMode } = useDemoMode();
 
   const { startOAuthFlow: startGoogleFlow } = useOAuth({ strategy: "oauth_google" });
   const { startOAuthFlow: startAppleFlow } = useOAuth({ strategy: "oauth_apple" });
@@ -166,6 +168,22 @@ export default function LoginScreen() {
                   </TouchableOpacity>
                 </Link>
               </View>
+
+              {/* Demo Mode */}
+              <TouchableOpacity
+                onPress={async () => {
+                  await enterDemoMode();
+                  router.replace('/(tabs)');
+                }}
+                className="flex-row items-center justify-center gap-3 mt-6 mb-4 py-4 rounded-2xl border border-dashed border-gold/30 bg-gold/5"
+                activeOpacity={0.7}
+              >
+                <Compass size={20} color="#c9a84c" />
+                <Text className="text-gold font-bold text-base">Try Demo Mode</Text>
+              </TouchableOpacity>
+              <Text className="text-textSecondary text-xs text-center mb-6 opacity-50">
+                Explore the app with sample data — no account needed
+              </Text>
             </View>
           </View>
         </KeyboardAvoidingView>

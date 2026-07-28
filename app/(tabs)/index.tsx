@@ -9,6 +9,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import * as MediaLibrary from 'expo-media-library';
 import { useLanguage } from '@/lib/languageContext';
+import { useToast } from '@/components/Toast';
+import * as Haptics from 'expo-haptics';
 
 export default function CameraScreen() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -18,6 +20,7 @@ export default function CameraScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
+  const { showToast } = useToast();
 
   useEffect(() => {
     (async () => {
@@ -70,6 +73,7 @@ export default function CameraScreen() {
         });
         
         if (photo) {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
           try {
              await MediaLibrary.saveToLibraryAsync(photo.uri);
           } catch (err) {
@@ -87,7 +91,7 @@ export default function CameraScreen() {
         }
       } catch (error) {
         console.error('Capture Error:', error);
-        Alert.alert("Capture Error", "Failed to take photo.");
+        showToast('Failed to take photo.', 'error');
       } finally {
         setIsProcessing(false);
       }

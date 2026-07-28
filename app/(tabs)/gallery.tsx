@@ -22,6 +22,7 @@ import { Session } from '@/types';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLanguage } from '@/lib/languageContext';
 import { useColorScheme } from 'nativewind';
+import { useToast } from '@/components/Toast';
 
 const { width } = Dimensions.get('window');
 const CARD_GAP = 10;
@@ -42,6 +43,7 @@ export default function GalleryScreen() {
   const scrollY = useRef(new Animated.Value(0)).current;
   const { t } = useLanguage();
   const { colorScheme } = useColorScheme();
+  const { showToast } = useToast();
 
   const openNativeMap = (item: Session) => {
     const { lat, lng } = item.coordinates as { lat: number; lng: number };
@@ -52,7 +54,7 @@ export default function GalleryScreen() {
     }) || `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
 
     Linking.openURL(url).catch(() => {
-      Alert.alert("Error", "Could not open map app.");
+      showToast('Could not open map app.', 'error');
     });
   };
 

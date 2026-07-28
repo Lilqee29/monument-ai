@@ -13,6 +13,8 @@ import { generateQuest } from '@/lib/ai';
 import { useQuest } from '@/lib/questContext';
 import { useLanguage } from '@/lib/languageContext';
 import * as Location from 'expo-location';
+import { useToast } from '@/components/Toast';
+import { useDemoMode } from '@/lib/demoMode';
 
 const { width } = Dimensions.get('window');
 
@@ -69,6 +71,8 @@ export default function QuestHub() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { language, t } = useLanguage();
+  const { showToast } = useToast();
+  const { isDemoMode, quest: demoQuest } = useDemoMode();
   const {
     activeQuest, setActiveQuest, questTimeLeft, setQuestTimeLeft,
     roomPin: globalRoomPin, joinRoom: ctxJoinRoom, createRoom: ctxCreateRoom,
@@ -114,7 +118,7 @@ export default function QuestHub() {
       setQuestTimeLeft(quest.duration_minutes * 60);
       router.push('/(tabs)/map');
     } catch (e) {
-      Alert.alert('Error', t('questGenFailed'));
+      showToast(t('questGenFailed'), 'error');
     } finally {
       setLoading(false);
     }
@@ -130,7 +134,7 @@ export default function QuestHub() {
       broadcastQuest(quest);
       router.push('/(tabs)/map');
     } catch (e) {
-      Alert.alert('Error', t('questGenFailed'));
+      showToast(t('questGenFailed'), 'error');
     } finally {
       setLoading(false);
     }
@@ -141,14 +145,14 @@ export default function QuestHub() {
       ctxJoinRoom(pinCode);
       setIsHost(false);
     } else {
-      Alert.alert('Invalid PIN', t('validPinAlert'));
+      showToast(t('validPinAlert'), 'error');
     }
   };
 
   const createRoom = () => {
     const pin = ctxCreateRoom();
     setIsHost(true);
-    Alert.alert('Room Created', t('roomCreatedAlert', { pin }));
+    showToast(t('roomCreatedAlert', { pin }), 'success');
   };
 
   const handleLeaveOrCancel = () => {
@@ -249,6 +253,53 @@ export default function QuestHub() {
             </Text>
           )}
         </ScrollView>
+      </View>
+    );
+  }
+
+  // ─── Demo Mode Quest Hub ──────────────────────────────────────────────────────
+  if (isDemoMode) {
+    return (
+      <View style={[hubStyles.container, { paddingTop: insets.top + 20 }]}>
+        <Text style={hubStyles.title}>{t('questHub')}</Text>
+        <Text style={hubStyles.sub}>Demo Mode — sample quests</Text>
+
+        {/* Demo Daily Bounty */}
+        <View style={hubStyles.bountyCard}>
+          <View style={hubStyles.bountyHeader}>
+            <Calendar size={16} color="#c9a84c" />
+            <Text style={hubStyles.bountyLabel}>Daily Bounty</Text>
+          </View>
+          <Text style={hubStyles.bountyTitle}>{dailyBounty.title}</Text>
+          <View style={hubStyles.bountyXP}>
+            <Sparkles size={12} color="#c9a84c" />
+            <Text style={hubStyles.bountyXPText}>+{dailyBounty.xp} XP</Text>
+          </View>
+        </View>
+
+        {/* Demo Quest */}
+        <View style={hubStyles.bountyCard}>
+          <View style={hubStyles.bountyHeader}>
+            <Target size={16} color="#c9a84c" />
+            <Text style={hubStyles.bountyLabel}>{demoQuest.title}</Text>
+          </View>
+          <Text style={hubStyles.bountySub}>{demoQuest.description}</Text>
+          <View style={hubStyles.bountyXP}>
+            <Sparkles size={12} color="#c9a84c" />
+            <Text style={hubStyles.bountyXPText}>+{demoQuest.xp_reward} XP</Text>
+          </View>
+          {demoQuest.tasks.map((task) => (
+            <View key={task.id} style={hubStyles.taskRow}>
+              <CheckCircle size={16} color={task.completed ? '#4ecdc4' : '#333'} />
+              <Text style={[hubStyles.taskText, task.completed && { color: '#4ecdc4' }]}>
+                {task.title}
+              </Text>
+              <Text style={hubStyles.taskXP}>+{task.xp_reward}</Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={{ height: 100 }} />
       </View>
     );
   }
@@ -468,6 +519,17 @@ const hubStyles = StyleSheet.create({
   activeBannerTitle: { color: '#f0ece0', fontSize: 17, fontFamily: 'Georgia' },
   activeBannerBtn: { backgroundColor: '#c9a84c', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 14 },
   activeBannerBtnText: { color: '#000', fontWeight: '900', fontSize: 11 },
+  // Demo mode styles
+  bountyCard: { backgroundColor: '#1a1a1a', borderRadius: 20, padding: 18, borderWidth: 1, borderColor: 'rgba(201,168,76,0.2)', marginBottom: 16, gap: 8 },
+  bountyHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  bountyLabel: { color: '#c9a84c', fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 2 },
+  bountyTitle: { color: '#f0ece0', fontSize: 17, fontFamily: 'Georgia' },
+  bountySub: { color: '#9a9483', fontSize: 13, lineHeight: 20 },
+  bountyXP: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  bountyXPText: { color: '#c9a84c', fontSize: 12, fontWeight: '800' },
+  taskRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
+  taskText: { flex: 1, color: '#f0ece0', fontSize: 13 },
+  taskXP: { color: '#9a9483', fontSize: 11, fontWeight: '700' },
 });
 
 const tabStyles = StyleSheet.create({

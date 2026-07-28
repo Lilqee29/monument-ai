@@ -10,6 +10,11 @@ export const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/
 export const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
 export const GEMINI_MODEL = 'gemini-2.5-flash'; // best free: fast, 1M ctx, JSON, vision
 
+// ─── Known landmarks for cross-referencing ────────────────────────────────────
+// Import the verified landmarks database to cross-check AI results and fix
+// hallucinated coordinates (e.g. AI returning 0,0 for unknown locations).
+import { WORLD_LANDMARKS } from '@/constants/landmarks';
+
 /**
  * Verified free model lists — July 2026.
  * All models confirmed $0 on OpenRouter as of July 27, 2026.
@@ -59,11 +64,25 @@ export const VISION_MODELS: string[] = [
   'openrouter/free',                              // ~5-12s — router picks best
 ];
 
-// ─── In-memory response cache ─────────────────────────────────────────────────
+// ─── In-memory response cache with LRU eviction ───────────────────────────────
+const MAX_CACHE_ENTRIES = 100;
 const responseCache = new Map<string, string>();
 
 function getCacheKey(model: string, messages: unknown[]): string {
   return `${model}::${JSON.stringify(messages)}`;
+}
+
+/** Evict oldest entry when cache is full (LRU — Map preserves insertion order) */
+function evictIfNeeded(): void {
+  while (responseCache.size > MAX_CACHE_ENTRIES) {
+    // Map.keys() returns in insertion order — first key is oldest
+    const oldestKey = responseCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      responseCache.delete(oldestKey);
+    } else {
+      break;
+    }
+  }
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -91,6 +110,10 @@ export interface MonumentResult {
   style_explanation?: string;
   significance_score?: number;
   details: MonumentDetails;
+  /** Set when coordinates were cross-referenced from WORLD_LANDMARKS (not AI-generated) */
+  _crossReferenced?: boolean;
+  /** Set when AI returned (0,0) coordinates — likely hallucinated */
+  _coordinatesUnverified?: boolean;
 }
 
 export interface MonumentError {
@@ -226,11 +249,14 @@ async function fetchGemini(
     (body.generationConfig as Record<string, unknown>).responseMimeType = 'application/json';
   }
 
-  const url = `${GEMINI_API_URL}/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+  const url = `${GEMINI_API_URL}/${GEMINI_MODEL}:generateContent`;
 
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': GEMINI_API_KEY,
+    },
     body: JSON.stringify(body),
     signal,
   });
@@ -279,6 +305,7 @@ async function callOpenRouter(
         controllers.forEach((c, j) => { if (j !== i) c.abort(); });
         // Cache the winner
         responseCache.set(getCacheKey(model, messages), content);
+        evictIfNeeded();
         return content;
       })
   );
@@ -293,6 +320,7 @@ async function callOpenRouter(
       try {
         const content = await fetchModel(model, messages, maxTokens, jsonMode);
         responseCache.set(getCacheKey(model, messages), content);
+        evictIfNeeded();
         console.log(`[RELICA] ✓ Fallback winner: ${model}`);
         return content;
       } catch (err: any) {
@@ -331,6 +359,7 @@ async function callAI(
     try {
       const content = await fetchGemini(messages, maxTokens, jsonMode);
       responseCache.set(cacheKey, content);
+      evictIfNeeded();
       console.log('[RELICA] ✓ Gemini winner');
       return content;
     } catch (err: any) {
@@ -425,6 +454,28 @@ export async function identifyMonument(
 
   if ('details' in result && result.details && !result.details.xp_reward) {
     result.details.xp_reward = Math.round((result.significance_score ?? 5) * 50);
+  }
+
+  // Cross-reference: if AI returned coordinates that are clearly wrong (0,0) or
+  // the monument name matches a known landmark, use verified coordinates instead.
+  if ('name' in result && result.name) {
+    const aiName = result.name.toLowerCase();
+    const knownLandmark = WORLD_LANDMARKS.find(
+      (lm) => lm.name.toLowerCase() === aiName || aiName.includes(lm.name.toLowerCase())
+    );
+    if (knownLandmark) {
+      // Use verified coordinates from our database
+      result.coordinates = knownLandmark.coordinates;
+      result._crossReferenced = true;
+    } else if (
+      result.coordinates &&
+      result.coordinates.lat === 0 &&
+      result.coordinates.lng === 0
+    ) {
+      // AI returned (0,0) — likely hallucinated coordinates, clear them
+      result.coordinates = { lat: 0, lng: 0 };
+      result._coordinatesUnverified = true;
+    }
   }
 
   return result;
@@ -644,4 +695,8 @@ export function clearAICache() {
 
 export function getAICacheSize() {
   return responseCache.size;
+}
+
+export function getAICacheMaxSize() {
+  return MAX_CACHE_ENTRIES;
 }

@@ -20,18 +20,13 @@ export function recordModuleError(phase: string, error: unknown) {
 }
 
 // ── Env-var snapshot (built at import time) ──────────────────────────
+// SECURITY: Never expose actual key values — only presence/absence
 const ENV_SNAPSHOT = {
-  EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? '(undefined)',
-  EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL ?? '(undefined)',
-  EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
-    ? `${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY.substring(0, 8)}...`
-    : '(undefined)',
-  EXPO_PUBLIC_OPENROUTER_API_KEY: process.env.EXPO_PUBLIC_OPENROUTER_API_KEY
-    ? `${process.env.EXPO_PUBLIC_OPENROUTER_API_KEY.substring(0, 8)}...`
-    : '(undefined)',
-  EXPO_PUBLIC_GEMINI_API_KEY: process.env.EXPO_PUBLIC_GEMINI_API_KEY
-    ? `${process.env.EXPO_PUBLIC_GEMINI_API_KEY.substring(0, 8)}...`
-    : '(undefined)',
+  EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ? '(set)' : '(missing)',
+  EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL ? '(set)' : '(missing)',
+  EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ? '(set)' : '(missing)',
+  EXPO_PUBLIC_OPENROUTER_API_KEY: process.env.EXPO_PUBLIC_OPENROUTER_API_KEY ? '(set)' : '(missing)',
+  EXPO_PUBLIC_GEMINI_API_KEY: process.env.EXPO_PUBLIC_GEMINI_API_KEY ? '(set)' : '(missing)',
 };
 
 // ── ErrorBoundary ───────────────────────────────────────────────────

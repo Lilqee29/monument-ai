@@ -34,6 +34,9 @@ jobs:
       - name: Install JS deps
         run: npm install --legacy-peer-deps
 
+      - name: TypeScript type check
+        run: npx tsc --noEmit 2>&1 || echo "⚠ TypeScript errors found (non-blocking for now)"
+
       - name: Fix abs() ambiguity in expo-modules-jsi (upstream bug)
         run: |
           # ── Expo upstream bug: expo-modules-jsi 57.0.4, JavaScriptCodable+Date.swift:53 ──

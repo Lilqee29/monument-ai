@@ -2,14 +2,23 @@ import { useState, useEffect } from 'react';
 import { supabase, createClerkSupabaseClient } from '@/lib/supabase';
 import { useAuth } from '@clerk/clerk-expo';
 import { Session } from '@/types';
+import { useDemoMode } from '@/lib/demoMode';
 
 export function useGallery() {
   const auth = useAuth();
+  const { isDemoMode, sessions: demoSessions } = useDemoMode();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchSessions = async () => {
+    // Demo mode — return mock data immediately
+    if (isDemoMode) {
+      setSessions(demoSessions);
+      setLoading(false);
+      return;
+    }
+
     if (!auth.isLoaded || !auth.userId) return;
 
     try {
@@ -46,7 +55,7 @@ export function useGallery() {
 
   useEffect(() => {
     fetchSessions();
-  }, [auth.userId, auth.isLoaded]);
+  }, [auth.userId, auth.isLoaded, isDemoMode]);
 
   return { sessions, loading, error, refresh: fetchSessions };
 }

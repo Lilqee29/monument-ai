@@ -205,6 +205,7 @@ export default function MapScreen() {
   const [userLocation, setUserLocation] = useState<Coordinates | null>(null);
   const [showExplored, setShowExplored] = useState<boolean>(true);
   const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
+  const [mapError, setMapError] = useState<string | null>(null);
   const [region, setRegion] = useState({
     latitude: 20,
     longitude: 10,
@@ -374,6 +375,10 @@ export default function MapScreen() {
         showsPointsOfInterest={false}
         showsBuildings={false}
         mapType={mapType === 'satellite' ? 'satellite' : 'standard'}
+        onError={(e) => {
+          console.error('[RELICA] MapView error:', e.nativeEvent);
+          setMapError(e.nativeEvent?.message || 'Map failed to load');
+        }}
       >
         {/* ── Explored area circles (coverage blobs) ── */}
         {showExplored &&
@@ -458,6 +463,21 @@ export default function MapScreen() {
           );
         })}
       </MapView>
+
+      {/* ── Map Error Fallback ── */}
+      {mapError && (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#0e0e0e', justifyContent: 'center', alignItems: 'center', zIndex: 9999, padding: 40 }]}>
+          <Text style={{ color: '#ff4444', fontSize: 40, marginBottom: 16 }}>🗺️</Text>
+          <Text style={{ color: '#f0ece0', fontSize: 18, fontFamily: 'Georgia', textAlign: 'center', marginBottom: 8 }}>Map unavailable</Text>
+          <Text style={{ color: '#9a9483', fontSize: 13, textAlign: 'center', lineHeight: 20 }}>{mapError}</Text>
+          <TouchableOpacity 
+            onPress={() => setMapError(null)} 
+            style={{ marginTop: 24, backgroundColor: '#c9a84c', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 16 }}
+          >
+            <Text style={{ color: '#000', fontWeight: '900', fontSize: 12 }}>Dismiss</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* ── Top HUD / Quest Dashboard ── */}
       <View style={[styles.topHUD, { top: insets.top + 12 }]}>

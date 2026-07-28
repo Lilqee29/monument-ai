@@ -29,6 +29,9 @@ const ENV_SNAPSHOT = {
   EXPO_PUBLIC_OPENROUTER_API_KEY: process.env.EXPO_PUBLIC_OPENROUTER_API_KEY
     ? `${process.env.EXPO_PUBLIC_OPENROUTER_API_KEY.substring(0, 8)}...`
     : '(undefined)',
+  EXPO_PUBLIC_GEMINI_API_KEY: process.env.EXPO_PUBLIC_GEMINI_API_KEY
+    ? `${process.env.EXPO_PUBLIC_GEMINI_API_KEY.substring(0, 8)}...`
+    : '(undefined)',
 };
 
 // ── ErrorBoundary ───────────────────────────────────────────────────

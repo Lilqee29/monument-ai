@@ -232,10 +232,15 @@ export default function GalleryScreen() {
 
 function MonumentCard({ item, imageHeight, onPress, onMapPress, delay = 0 }: any) {
   const scale = useRef(new Animated.Value(1)).current;
-  const opacity = useRef(new Animated.Value(0)).current;
+  const opacity = useRef(new Animated.Value(1)).current;
 
   React.useEffect(() => {
-    Animated.timing(opacity, { toValue: 1, duration: 400, delay, useNativeDriver: true }).start();
+    // Fade in with a safety fallback — if animation doesn't start, card is still visible
+    opacity.setValue(0);
+    const timer = setTimeout(() => {
+      Animated.timing(opacity, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+    }, delay || 0);
+    return () => clearTimeout(timer);
   }, []);
 
   const qaCount = item.qa_thread ? Math.floor(item.qa_thread.length / 2) : 0;

@@ -11,9 +11,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.relica.app",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
-      }
-    },
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "RELICA uses your location to show nearby monuments and exploration maps."
+      },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
@@ -69,7 +69,7 @@
       "expo-sharing",
       "expo-status-bar",
       "expo-web-browser",
-      "react-native-maps"
+      ["react-native-maps", {}]
     ],
     "experiments": {
       "typedRoutes": true,

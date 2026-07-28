@@ -736,10 +736,10 @@ export default function ProfileScreen() {
                   style={[styles.galleryCard, { height: index % 2 === 0 ? 170 : 220 }]}
                 >
                   <TouchableOpacity onPress={() => router.push(`/session/${session.id}`)} style={{ flex: 1 }}>
-                    <Image source={{ uri: session.photo_url }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+                    <Image source={{ uri: session.photo_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
                     <LinearGradient
                       colors={['transparent', 'rgba(0,0,0,0.75)']}
-                      style={[StyleSheet.absoluteFillObject, { justifyContent: 'flex-end', padding: 10 }]}
+                      style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end', padding: 10 }]}
                     >
                       <Text style={styles.galleryName} numberOfLines={1}>{session.monument_name}</Text>
                     </LinearGradient>
@@ -797,16 +797,23 @@ const styles = StyleSheet.create({
 
   userCard: { backgroundColor: '#1a1a1a', borderRadius: 28, padding: 20, flexDirection: 'row', alignItems: 'center', marginBottom: 16, borderWidth: 1, borderColor: '#2a2a2a' },
   avatarContainer: { position: 'relative' },
-  avatar: { width: 80, height: 80, borderRadius: 20, backgroundColor: '#2a2a2a' },
+  avatar: { width: 80, height: 80, borderRadius: 20, backgroundColor: '#2a2a2a', alignItems: 'center', justifyContent: 'center' },
+  avatarText: { color: '#f0ece0', fontSize: 28, fontFamily: 'Georgia', fontWeight: '700' },
   cameraBtn: { position: 'absolute', bottom: -4, right: -4, width: 28, height: 28, backgroundColor: '#c9a84c', borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#1a1a1a' },
   userInfo: { marginLeft: 16, flex: 1 },
   userName: { color: '#f0ece0', fontSize: 22, fontFamily: 'Georgia' },
+  userRole: { color: '#9a9483', fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginTop: 2 },
   levelRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 8, flexWrap: 'wrap' },
   levelBadge: { backgroundColor: '#c9a84c', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20 },
   levelText: { color: '#000', fontSize: 9, fontWeight: '900', textTransform: 'uppercase' },
   rankText: { color: '#9a9483', fontSize: 10, fontWeight: '700' },
   streakBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(255,107,53,0.15)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,107,53,0.3)' },
   streakBadgeText: { color: '#ff6b35', fontSize: 10, fontWeight: '900' },
+  streakCard: { backgroundColor: '#1a1a1a', borderRadius: 20, padding: 18, flexDirection: 'row', alignItems: 'center', gap: 14, borderWidth: 1, borderColor: '#2a2a2a', marginBottom: 14 },
+  streakEmoji: { fontSize: 32 },
+  streakInfo: { flex: 1 },
+  streakTitle: { color: '#f0ece0', fontSize: 16, fontFamily: 'Georgia', fontWeight: '700' },
+  streakSub: { color: '#9a9483', fontSize: 11, fontWeight: '600', marginTop: 2 },
   progressBg: { width: '100%', height: 3, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 2, marginTop: 10, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: '#c9a84c', borderRadius: 2 },
   xpHint: { color: '#9a9483', fontSize: 8, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginTop: 4 },

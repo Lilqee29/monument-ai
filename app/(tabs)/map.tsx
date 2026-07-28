@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, StatusBar } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, StatusBar, type NativeSyntheticEvent } from 'react-native';
 import MapView, { Marker, Callout, Circle, Polyline } from 'react-native-maps';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@clerk/clerk-expo';
@@ -211,7 +211,8 @@ export default function MapScreen() {
         showsBuildings={false}
         mapType={mapType === 'satellite' ? 'satellite' : 'standard'}
         onRegionChangeComplete={handleRegionChange}
-        onError={(e) => {
+        // @ts-expect-error — react-native-maps supports onError at runtime but omits it from MapViewProps
+        onError={(e: NativeSyntheticEvent<{ message?: string }>) => {
           console.error('[RELICA] MapView error:', e.nativeEvent);
           setMapError(e.nativeEvent?.message || 'Map failed to load');
         }}

@@ -10,16 +10,17 @@ import { useLanguage } from '@/lib/languageContext';
 export default function TabLayout() {
   const colorScheme = useColorScheme();
   const { t } = useLanguage();
+  const scheme = (colorScheme ?? 'dark') as 'light' | 'dark';
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'dark'].tint,
-        tabBarInactiveTintColor: Colors[colorScheme ?? 'dark'].icon,
+        tabBarActiveTintColor: Colors[scheme].tint,
+        tabBarInactiveTintColor: Colors[scheme].icon,
         headerShown: false,
-        tabBarButton: HapticTab,
+        tabBarButton: HapticTab as any,
         tabBarStyle: {
-          backgroundColor: Colors[colorScheme ?? 'dark'].background,
+          backgroundColor: Colors[scheme].background,
           borderTopWidth: 0,
           borderTopLeftRadius: 32,
           borderTopRightRadius: 32,

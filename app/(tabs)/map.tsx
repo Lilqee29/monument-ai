@@ -205,10 +205,9 @@ export default function MapScreen() {
 
       <MapView
         ref={mapRef}
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
         initialRegion={region}
         showsUserLocation
-        showsPointsOfInterest={false}
         showsBuildings={false}
         mapType={mapType === 'satellite' ? 'satellite' : 'standard'}
         onRegionChangeComplete={handleRegionChange}

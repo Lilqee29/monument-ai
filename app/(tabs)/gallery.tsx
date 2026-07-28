@@ -257,8 +257,8 @@ function MonumentCard({ item, imageHeight, onPress, onMapPress, delay = 0 }: any
         style={styles.card}
       >
         <View style={[styles.cardImageWrapper, { height: imageHeight }]}>
-          <Image source={{ uri: item.photo_url }} style={StyleSheet.absoluteFillObject} />
-          <LinearGradient colors={['transparent', 'rgba(0,0,0,0.6)']} style={StyleSheet.absoluteFillObject} />
+          <Image source={{ uri: item.photo_url }} style={StyleSheet.absoluteFill} />
+          <LinearGradient colors={['transparent', 'rgba(0,0,0,0.6)']} style={StyleSheet.absoluteFill} />
           <View style={styles.countryBadge}><Text style={styles.countryBadgeText}>{item.location_country}</Text></View>
           {qaCount > 0 && (
             <View style={styles.qaBadge}>
@@ -289,8 +289,8 @@ function HeroCard({ item, onPress, onMapPress }: any) {
   const { t } = useLanguage();
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.9} style={styles.heroCard}>
-      <Image source={{ uri: item.photo_url }} style={StyleSheet.absoluteFillObject} />
-      <LinearGradient colors={['transparent', 'rgba(0,0,0,0.85)']} style={StyleSheet.absoluteFillObject} />
+      <Image source={{ uri: item.photo_url }} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={['transparent', 'rgba(0,0,0,0.85)']} style={StyleSheet.absoluteFill} />
       <View style={styles.heroBadge}><Text style={styles.heroBadgeText}>{t('latestDiscovery')}</Text></View>
       <View style={styles.heroContent}>
         <Text style={styles.heroName}>{item.monument_name}</Text>

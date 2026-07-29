@@ -1,180 +1,147 @@
 /**
- * Custom app entry point.
+ * RELICA Diagnostic Entry Point
  *
- * WHY THIS EXISTS:
- * The crash occurs on every single launch before any useEffect runs, so the
- * standard debug screen in _layout.tsx never gets a chance to display.
+ * This entry point does NOT call require.context('./app') on startup.
+ * Instead, it boots a pure, lightweight React Native screen and tests loading
+ * native modules ONE BY ONE via dynamic import() inside try/catch blocks.
  *
- * By making THIS the app entry (package.json "main"), we can:
- *  1. Install the global error handler BEFORE expo-router evaluates ANY route file.
- *  2. Check for a saved crash file BEFORE mounting the normal app tree.
- *  3. If a crash file exists, render a minimal standalone screen that has NO
- *     dependencies on any of the modules that are crashing — just raw React Native.
- *
- * The normal app (expo-router) is lazy-imported only AFTER the crash check completes.
+ * If a module crashes, we capture the exact module name on screen BEFORE
+ * loading the rest of the application.
  */
 
-// ─── Step 1: Install global error handler immediately ────────────────────────
-// This import runs our IIFE before anything else.
-import './lib/crashDebug';
-
-// ─── Step 2: Minimal React Native for the crash display screen ───────────────
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   AppRegistry,
   View,
   Text,
-  ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
+  ScrollView,
   SafeAreaView,
+  ActivityIndicator,
 } from 'react-native';
 import { ExpoRoot } from 'expo-router';
 
-// ─── Step 3: Minimal crash file reader ───────────────────────────────────────
-// Defined inline here so this file has ZERO dependency on crashDebug exports
-// (we already imported it above for the side-effect, but we read the file
-// independently here using a direct require so it can't accidentally re-throw).
-function readCrashFileSync(): Promise<string | null> {
-  return new Promise((resolve) => {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const FS = require('expo-file-system');
-      const path = FS.documentDirectory + 'last_crash.json';
-      FS.getInfoAsync(path)
-        .then((info: { exists: boolean }) => {
-          if (!info.exists) { resolve(null); return; }
-          return FS.readAsStringAsync(path);
-        })
-        .then((raw: string | undefined | null) => {
-          if (!raw) { resolve(null); return; }
-          resolve(raw);
-        })
-        .catch(() => resolve(null));
-    } catch {
-      resolve(null);
-    }
-  });
-}
+function DiagnosticApp() {
+  const [logs, setLogs] = useState<string[]>(['[DIAGNOSTICS] App booted successfully!']);
+  const [testing, setTesting] = useState(false);
+  const [appReady, setAppReady] = useState(false);
 
-function deleteCrashFile(): void {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const FS = require('expo-file-system');
-    FS.deleteAsync(FS.documentDirectory + 'last_crash.json', { idempotent: true }).catch(() => {});
-  } catch {
-    // ignore
-  }
-}
+  const addLog = (msg: string) => {
+    setLogs((prev) => [...prev, `[${new Date().toISOString().slice(11, 19)}] ${msg}`]);
+  };
 
-// ─── Step 4: Root component ───────────────────────────────────────────────────
-function App() {
-  const [checking, setChecking] = useState(true);
-  const [crashData, setCrashData] = useState<string | null>(null);
+  const runModuleTests = async () => {
+    setTesting(true);
+    addLog('Starting native module audit...');
 
-  useEffect(() => {
-    readCrashFileSync().then((raw) => {
-      if (raw) {
-        setCrashData(raw);
+    const modules = [
+      { name: 'expo-secure-store', load: () => import('expo-secure-store') },
+      { name: 'expo-location', load: () => import('expo-location') },
+      { name: 'expo-camera', load: () => import('expo-camera') },
+      { name: 'expo-media-library', load: () => import('expo-media-library') },
+      { name: 'expo-notifications', load: () => import('expo-notifications') },
+      { name: 'expo-image-picker', load: () => import('expo-image-picker') },
+      { name: 'react-native-reanimated', load: () => import('react-native-reanimated') },
+      { name: 'react-native-maps', load: () => import('react-native-maps') },
+      { name: '@clerk/clerk-expo', load: () => import('@clerk/clerk-expo') },
+      { name: '@supabase/supabase-js', load: () => import('@supabase/supabase-js') },
+    ];
+
+    for (const mod of modules) {
+      try {
+        addLog(`Testing import: ${mod.name}...`);
+        await mod.load();
+        addLog(`✅ ${mod.name}: OK`);
+      } catch (e: any) {
+        addLog(`❌ ${mod.name} FAILED: ${e?.message ?? String(e)}`);
       }
-      setChecking(false);
-    });
-  }, []);
+    }
 
-  // Still reading
-  if (checking) {
-    return (
-      <View style={{ flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator color="#c9a84c" />
-      </View>
-    );
+    addLog('Audit complete! Attempting full Expo Router load...');
+    setTesting(false);
+  };
+
+  const launchFullApp = () => {
+    try {
+      addLog('Loading require.context("./app")...');
+      setAppReady(true);
+    } catch (e: any) {
+      addLog(`❌ require.context FAILED: ${e?.message ?? String(e)}`);
+    }
+  };
+
+  if (appReady) {
+    // @ts-ignore require.context is provided by Metro
+    const ctx = require.context('./app');
+    return <ExpoRoot context={ctx} />;
   }
 
-  // Crash file found — show it BEFORE loading any app code
-  if (crashData) {
-    let parsed: any = null;
-    try { parsed = JSON.parse(crashData); } catch { /* show raw */ }
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#050505' }}>
+      <View style={{ flex: 1, padding: 20 }}>
+        <Text style={{ color: '#c9a84c', fontSize: 24, fontWeight: 'bold', fontFamily: 'serif', marginBottom: 4 }}>
+          RELICA DIAGNOSTICS
+        </Text>
+        <Text style={{ color: '#888', fontSize: 13, marginBottom: 16 }}>
+          Diagnostic runner to pinpoint startup crash source.
+        </Text>
 
-    return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }}>
-        <View style={{ flex: 1, padding: 16, paddingTop: 8 }}>
-          <Text style={{ color: '#ff4444', fontSize: 18, fontWeight: 'bold', marginBottom: 4 }}>
-            ‼️ CRASH CAPTURED — Previous Launch
-          </Text>
-          <Text style={{ color: '#ff8800', fontSize: 12, marginBottom: 4 }}>
-            📸 SCREENSHOT THIS ENTIRE SCREEN then tap Continue
-          </Text>
-          {parsed ? (
-            <Text style={{ color: '#888', fontSize: 11, marginBottom: 8 }}>
-              {parsed.timestamp} | fatal={String(parsed.isFatal)}
+        <ScrollView
+          style={{ flex: 1, backgroundColor: '#111', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#222' }}
+        >
+          {logs.map((log, index) => (
+            <Text
+              key={index}
+              style={{
+                color: log.includes('❌') ? '#ff5555' : log.includes('✅') ? '#55ff55' : '#cccccc',
+                fontSize: 12,
+                fontFamily: 'monospace',
+                marginBottom: 6,
+              }}
+            >
+              {log}
             </Text>
-          ) : null}
-          <ScrollView
-            style={{ flex: 1, backgroundColor: '#111', borderRadius: 8, padding: 8 }}
-            contentContainerStyle={{ paddingBottom: 16 }}
-          >
-            {parsed ? (
-              <>
-                <Text style={{ color: '#ffcc00', fontSize: 12, fontWeight: 'bold', marginBottom: 4 }}>
-                  ── ERROR MESSAGE ──
-                </Text>
-                <Text style={{ color: '#ff6060', fontSize: 12, fontFamily: 'monospace' }} selectable>
-                  {parsed.message}
-                </Text>
+          ))}
+          {testing ? <ActivityIndicator color="#c9a84c" style={{ marginTop: 12 }} /> : null}
+        </ScrollView>
 
-                <Text style={{ color: '#ffcc00', fontSize: 12, fontWeight: 'bold', marginTop: 12, marginBottom: 4 }}>
-                  ── STACK TRACE ──
-                </Text>
-                <Text style={{ color: '#ff9999', fontSize: 10, fontFamily: 'monospace' }} selectable>
-                  {parsed.stack}
-                </Text>
-
-                {parsed.breadcrumbs && parsed.breadcrumbs.length > 0 ? (
-                  <>
-                    <Text style={{ color: '#ffcc00', fontSize: 12, fontWeight: 'bold', marginTop: 12, marginBottom: 4 }}>
-                      ── BREADCRUMBS AT CRASH TIME ({parsed.breadcrumbs.length}) ──
-                    </Text>
-                    <Text style={{ color: '#00ff88', fontSize: 10, fontFamily: 'monospace' }} selectable>
-                      {parsed.breadcrumbs.join('\n')}
-                    </Text>
-                  </>
-                ) : null}
-              </>
-            ) : (
-              <Text style={{ color: '#ff6060', fontSize: 10, fontFamily: 'monospace' }} selectable>
-                {crashData}
-              </Text>
-            )}
-          </ScrollView>
+        <View style={{ gap: 10, marginTop: 16 }}>
           <TouchableOpacity
-            onPress={() => {
-              deleteCrashFile();
-              setCrashData(null);
-            }}
+            onPress={runModuleTests}
+            disabled={testing}
             style={{
               backgroundColor: '#c9a84c',
-              paddingVertical: 16,
+              paddingVertical: 14,
               borderRadius: 12,
-              marginTop: 12,
               alignItems: 'center',
+              opacity: testing ? 0.5 : 1,
             }}
           >
             <Text style={{ color: '#000', fontSize: 16, fontWeight: 'bold' }}>
-              Continue → (clears crash log)
+              Run Native Module Audit
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={launchFullApp}
+            disabled={testing}
+            style={{
+              backgroundColor: '#222',
+              borderColor: '#444',
+              borderWidth: 1,
+              paddingVertical: 14,
+              borderRadius: 12,
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>
+              Launch Full App →
             </Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
-    );
-  }
-
-  // No crash — start the normal Expo Router app
-  // ExpoRoot is the component expo-router/entry registers.
-  // We pass the context that expo-router's entry script would normally pass.
-  // @ts-ignore require.context is provided by Metro
-  const ctx = require.context('./app');
-  return <ExpoRoot context={ctx} />;
+      </View>
+    </SafeAreaView>
+  );
 }
 
-// ─── Step 5: Register the root component ─────────────────────────────────────
-AppRegistry.registerComponent('main', () => App);
+AppRegistry.registerComponent('main', () => DiagnosticApp);

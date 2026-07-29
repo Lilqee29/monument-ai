@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, StatusBar, type NativeSyntheticEvent } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, StatusBar,Platform, type NativeSyntheticEvent } from 'react-native';
 import MapView, { Marker, Callout, Circle, Polyline } from 'react-native-maps';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@clerk/clerk-expo';

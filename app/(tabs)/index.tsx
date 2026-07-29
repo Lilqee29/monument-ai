@@ -47,7 +47,7 @@ export default function CameraScreen() {
   if (!permission.granted) {
     return (
       <View className="flex-1 bg-background items-center justify-center p-12">
-        <Sparkles size={64} color="#c9a84c" opacity={0.5} />
+        <Sparkles size={64} color="#c9a84c" style={{ opacity: 0.5 }} />
         <Text className="text-textPrimary text-center text-2xl mt-8 font-serif">
           Enable Your Vision
         </Text>
@@ -165,13 +165,13 @@ export default function CameraScreen() {
         </View>
 
         {/* Hint Overlay */}
-        <Animated.View entering={FadeIn.delay(500)} className="items-center" pointerEvents="none">
+        <View className="items-center" pointerEvents="none">
           <View className="bg-black/40 px-6 py-3 rounded-2xl border border-white/10">
             <Text className="text-white/90 text-sm font-serif italic text-center">
               "{t('focusHint')}"
             </Text>
           </View>
-        </Animated.View>
+        </View>
 
         {/* Bottom Controls */}
         <View className="flex-row items-center justify-between px-2" pointerEvents="box-none">

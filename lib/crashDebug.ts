@@ -1,34 +1,33 @@
 /**
- * Crash Debug Breadcrumbs — writes to a file so even if the app crashes,
+ * Crash Debug Breadcrumbs — writes to AsyncStorage so even if the app crashes,
  * on the NEXT launch we can read the last breadcrumbs to see where it died.
  */
-import * as FileSystem from 'expo-file-system';
-import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const BREADCRUMB_FILE = `${FileSystem.documentDirectory}crash_breadcrumbs.txt`;
+const BREADCRUMB_KEY = '@crash_breadcrumbs';
 const MAX_LINES = 200;
 
 let breadcrumbCount = 0;
-let fileSystemAvailable = true;
+let storageAvailable = true;
 
 export function breadcrumb(phase: string, detail?: string) {
   const timestamp = new Date().toISOString().slice(11, 23); // HH:MM:SS.mmm
   const line = `[${timestamp}] #${breadcrumbCount++} ${phase}${detail ? ' — ' + detail : ''}`;
   console.log(`[CRASH-DEBUG] ${line}`);
 
-  // Append to file (non-blocking, fire-and-forget)
-  if (!fileSystemAvailable) return;
+  // Append to AsyncStorage (non-blocking, fire-and-forget)
+  if (!storageAvailable) return;
   const appendAsync = async () => {
     try {
-      const existing = await FileSystem.readAsStringAsync(BREADCRUMB_FILE).catch(() => '');
-      const lines = existing.split('\n').filter(Boolean);
+      const existing = await AsyncStorage.getItem(BREADCRUMB_KEY).catch(() => '');
+      const lines = (existing || '').split('\n').filter(Boolean);
       lines.push(line);
       // Keep only last N lines
       const trimmed = lines.slice(-MAX_LINES);
-      await FileSystem.writeAsStringAsync(BREADCRUMB_FILE, trimmed.join('\n'));
+      await AsyncStorage.setItem(BREADCRUMB_KEY, trimmed.join('\n'));
     } catch {
-      // Disable file logging if it keeps failing
-      fileSystemAvailable = false;
+      // Disable storage logging if it keeps failing
+      storageAvailable = false;
     }
   };
   appendAsync();
@@ -37,7 +36,7 @@ export function breadcrumb(phase: string, detail?: string) {
 /** Call this on app launch to read and return the last breadcrumbs from previous session */
 export async function readLastBreadcrumbs(): Promise<string> {
   try {
-    const content = await FileSystem.readAsStringAsync(BREADCRUMB_FILE);
+    const content = await AsyncStorage.getItem(BREADCRUMB_KEY);
     return content || '(no breadcrumbs)';
   } catch {
     return '(no breadcrumb file)';
@@ -47,7 +46,7 @@ export async function readLastBreadcrumbs(): Promise<string> {
 /** Call this to clear breadcrumbs after reading */
 export async function clearBreadcrumbs(): Promise<void> {
   try {
-    await FileSystem.deleteAsync(BREADCRUMB_FILE, { idempotent: true });
+    await AsyncStorage.removeItem(BREADCRUMB_KEY);
   } catch {
     // ignore
   }

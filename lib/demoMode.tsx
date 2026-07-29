@@ -14,8 +14,6 @@ import {
 } from './demoData';
 import { breadcrumb } from '@/lib/crashDebug';
 
-breadcrumb('D00', 'demoMode.tsx loaded');
-
 interface DemoUser {
   id: string;
   firstName: string;

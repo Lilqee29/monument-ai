@@ -3,8 +3,6 @@ import * as SecureStore from 'expo-secure-store';
 import { translations } from './translations';
 import { breadcrumb } from '@/lib/crashDebug';
 
-breadcrumb('L00', 'languageContext.tsx loaded');
-
 export type Language = 'English' | 'Français' | 'Español';
 
 export const languageCodeMap: Record<Language, string> = {

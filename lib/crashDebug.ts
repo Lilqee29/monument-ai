@@ -1,33 +1,36 @@
 /**
- * Crash Debug Breadcrumbs — writes to AsyncStorage so even if the app crashes,
+ * Crash Debug Breadcrumbs — writes to SecureStore so even if the app crashes,
  * on the NEXT launch we can read the last breadcrumbs to see where it died.
  */
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 
 const BREADCRUMB_KEY = '@crash_breadcrumbs';
-const MAX_LINES = 200;
+const MAX_ENTRIES = 80;
 
 let breadcrumbCount = 0;
-let storageAvailable = true;
+let storageReady = false;
+
+/** Call this once the app is mounted — enables storage for breadcrumbs */
+export function enableBreadcrumbStorage() {
+  storageReady = true;
+}
 
 export function breadcrumb(phase: string, detail?: string) {
   const timestamp = new Date().toISOString().slice(11, 23); // HH:MM:SS.mmm
   const line = `[${timestamp}] #${breadcrumbCount++} ${phase}${detail ? ' — ' + detail : ''}`;
   console.log(`[CRASH-DEBUG] ${line}`);
 
-  // Append to AsyncStorage (non-blocking, fire-and-forget)
-  if (!storageAvailable) return;
+  // Append to SecureStore (non-blocking, fire-and-forget)
+  if (!storageReady) return;
   const appendAsync = async () => {
     try {
-      const existing = await AsyncStorage.getItem(BREADCRUMB_KEY).catch(() => '');
+      const existing = await SecureStore.getItemAsync(BREADCRUMB_KEY).catch(() => '');
       const lines = (existing || '').split('\n').filter(Boolean);
       lines.push(line);
-      // Keep only last N lines
-      const trimmed = lines.slice(-MAX_LINES);
-      await AsyncStorage.setItem(BREADCRUMB_KEY, trimmed.join('\n'));
+      const trimmed = lines.slice(-MAX_ENTRIES);
+      await SecureStore.setItemAsync(BREADCRUMB_KEY, trimmed.join('\n'));
     } catch {
-      // Disable storage logging if it keeps failing
-      storageAvailable = false;
+      // ignore — don't crash the app for debug logging
     }
   };
   appendAsync();
@@ -36,7 +39,7 @@ export function breadcrumb(phase: string, detail?: string) {
 /** Call this on app launch to read and return the last breadcrumbs from previous session */
 export async function readLastBreadcrumbs(): Promise<string> {
   try {
-    const content = await AsyncStorage.getItem(BREADCRUMB_KEY);
+    const content = await SecureStore.getItemAsync(BREADCRUMB_KEY);
     return content || '(no breadcrumbs)';
   } catch {
     return '(no breadcrumb file)';
@@ -46,7 +49,7 @@ export async function readLastBreadcrumbs(): Promise<string> {
 /** Call this to clear breadcrumbs after reading */
 export async function clearBreadcrumbs(): Promise<void> {
   try {
-    await AsyncStorage.removeItem(BREADCRUMB_KEY);
+    await SecureStore.deleteItemAsync(BREADCRUMB_KEY);
   } catch {
     // ignore
   }
@@ -89,22 +92,6 @@ export function installGlobalErrorHandlers() {
       original(error, isFatal);
     }
   });
-
-  // Also catch unhandled promise rejections via global tracking
-  try {
-    const { enable, disable } = require('promise/setimmediate/rejection-tracking');
-    enable({
-      allRejections: true,
-      onUnhandled: (id: number, error: any) => {
-        const msg = error?.message ?? String(error);
-        breadcrumb(`UNHANDLED-PROMISE id=${id}: ${msg}`);
-        console.error(`[CRASH-DEBUG] UNHANDLED PROMISE REJECTION:`, error);
-      },
-    });
-  } catch {
-    // Fallback: no promise tracking available, rely on ErrorUtils
-    breadcrumb('GlobalErrorHandlers', 'promise/setimmediate not available, using ErrorUtils only');
-  }
 
   breadcrumb('00b', 'Global error handlers installed');
 }

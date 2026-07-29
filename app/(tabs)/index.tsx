@@ -13,8 +13,6 @@ import { useToast } from '@/components/Toast';
 import * as Haptics from 'expo-haptics';
 import { breadcrumb } from '@/lib/crashDebug';
 
-breadcrumb('C00', 'camera/index.tsx loaded — all native imports done');
-
 export default function CameraScreen() {
   breadcrumb('C01', 'CameraScreen render');
   const [permission, requestPermission] = useCameraPermissions();

@@ -24,13 +24,11 @@ import { setupNotifications } from '@/lib/notifications';
 import { CrashReporter, recordModuleError } from '@/components/CrashReporter';
 import { ToastProvider } from '@/components/Toast';
 import { DemoProvider, useDemoMode } from '@/lib/demoMode';
-import { breadcrumb, readLastBreadcrumbs, clearBreadcrumbs, installGlobalErrorHandlers, guardedAsync } from '@/lib/crashDebug';
+import { breadcrumb, readLastBreadcrumbs, clearBreadcrumbs, installGlobalErrorHandlers, guardedAsync, enableBreadcrumbStorage } from '@/lib/crashDebug';
 
 import "../global.css";
 
-// ── Install global error handlers ASAP (module scope) ───────────────
-installGlobalErrorHandlers();
-breadcrumb('00', 'module scope — _layout.tsx loaded');
+// NO module-scope breadcrumb calls — causes native crash on launch
 
 // ── Module-scope env-var check (safe — no throw) ────────────────────
 let publishableKey = '';
@@ -39,10 +37,8 @@ try {
   if (!publishableKey) {
     recordModuleError('CLERK_KEY', new Error('EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY is empty/undefined'));
   }
-  breadcrumb('01', `publishableKey: ${publishableKey ? '(set, len=' + publishableKey.length + ')' : '(MISSING)'}`);
 } catch (e) {
   recordModuleError('CLERK_KEY', e);
-  breadcrumb('01', `publishableKey ERROR: ${e}`);
 }
 
 SplashScreen.preventAutoHideAsync();
@@ -224,8 +220,10 @@ export default function RootLayout() {
   const [lastBreadcrumbs, setLastBreadcrumbs] = useState<string>('');
   const [showDebugScreen, setShowDebugScreen] = useState(false);
 
-  // On mount: read previous session's breadcrumbs
+  // On mount: read previous session's breadcrumbs + install error handlers
   useEffect(() => {
+    enableBreadcrumbStorage();
+    installGlobalErrorHandlers();
     readLastBreadcrumbs().then(text => {
       if (text && text !== '(no breadcrumbs)' && text !== '(no breadcrumb file)') {
         setLastBreadcrumbs(text);

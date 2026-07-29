@@ -4,8 +4,6 @@ import { supabase } from '@/lib/supabase';
 import { useUser } from '@clerk/clerk-expo';
 import { breadcrumb } from '@/lib/crashDebug';
 
-breadcrumb('Q00', 'questContext.tsx loaded');
-
 export type MultiplayerPlayer = {
   id: string;
   name: string;

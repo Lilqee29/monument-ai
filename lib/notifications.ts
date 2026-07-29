@@ -4,9 +4,6 @@
  */
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
-import { breadcrumb } from '@/lib/crashDebug';
-
-breadcrumb('N00', 'notifications.ts loaded');
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
 

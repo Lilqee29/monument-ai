@@ -14,6 +14,7 @@
         "ITSAppUsesNonExemptEncryption": false,
         "NSLocationWhenInUseUsageDescription": "RELICA uses your location to show nearby monuments and exploration maps.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "RELICA uses your location in the background to trigger monument geofence alerts.",
+        "NSLocationAlwaysUsageDescription": "RELICA uses your location in the background to trigger monument geofence alerts.",
         "NSCameraUsageDescription": "RELICA uses the camera to photograph and identify monuments.",
         "NSPhotoLibraryUsageDescription": "RELICA saves monument photos to your library and lets you pick images to identify.",
         "NSPhotoLibraryAddUsageDescription": "RELICA saves monument photos to your photo library.",

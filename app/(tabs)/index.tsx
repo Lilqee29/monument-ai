@@ -26,25 +26,16 @@ export default function CameraScreen() {
   const { showToast } = useToast();
 
   useEffect(() => {
-    breadcrumb('C10', 'camera useEffect — requesting permissions');
+    breadcrumb('C10', 'camera useEffect — checking location permission');
     (async () => {
       try {
-        breadcrumb('C11', 'requesting Location permissions');
-        const { status } = await Location.requestForegroundPermissionsAsync();
+        const { status } = await Location.getForegroundPermissionsAsync();
         setLocationPermission(status === 'granted');
-        breadcrumb('C12', `location permission: ${status}`);
+        breadcrumb('C12', `location permission status: ${status}`);
       } catch (e: any) {
-        breadcrumb('C13', `Location permission ERROR: ${e?.message ?? e}`);
-        console.warn('[CameraScreen] Location permission failed:', e);
+        breadcrumb('C13', `Location permission check ERROR: ${e?.message ?? e}`);
+        console.warn('[CameraScreen] Location permission check failed:', e);
         setLocationPermission(false);
-      }
-      try {
-        breadcrumb('C14', 'requesting MediaLibrary permissions');
-        await MediaLibrary.requestPermissionsAsync();
-        breadcrumb('C15', 'MediaLibrary permission done');
-      } catch (e: any) {
-        breadcrumb('C16', `MediaLibrary permission ERROR: ${e?.message ?? e}`);
-        console.warn('[CameraScreen] MediaLibrary permission failed:', e);
       }
     })();
   }, []);

@@ -93,11 +93,11 @@ export function enableBreadcrumbStorage() {
 // ─── Read last crash file (FileSystem) ───────────────────────────────────────
 export async function readLastCrashFile(): Promise<CrashPayload | null> {
   try {
-    const FS = getFS();
+    const FS: any = getFS();
     if (!FS || !FS.documentDirectory) return null;
     const path = FS.documentDirectory + CRASH_FILE_KEY;
     const info = await FS.getInfoAsync(path);
-    if (!info.exists) return null;
+    if (!info?.exists) return null;
     const raw = await FS.readAsStringAsync(path);
     return JSON.parse(raw) as CrashPayload;
   } catch {
@@ -108,7 +108,7 @@ export async function readLastCrashFile(): Promise<CrashPayload | null> {
 // ─── Delete crash file (call after displaying it) ────────────────────────────
 export async function deleteLastCrashFile(): Promise<void> {
   try {
-    const FS = getFS();
+    const FS: any = getFS();
     if (!FS || !FS.documentDirectory) return;
     const path = FS.documentDirectory + CRASH_FILE_KEY;
     await FS.deleteAsync(path, { idempotent: true });
@@ -143,11 +143,11 @@ export async function clearBreadcrumbs(): Promise<void> {
 // Returns a Promise that resolves when the write is done (or fails silently).
 async function writeCrashFile(payload: CrashPayload): Promise<void> {
   try {
-    const FS = getFS();
+    const FS: any = getFS();
     if (!FS || !FS.documentDirectory) return;
     const path = FS.documentDirectory + CRASH_FILE_KEY;
     await FS.writeAsStringAsync(path, JSON.stringify(payload, null, 2), {
-      encoding: FS.EncodingType.UTF8,
+      encoding: FS.EncodingType?.UTF8 ?? 'utf8',
     });
     console.log(`[CRASH-DEBUG] ✅ Crash file written to: ${path}`);
   } catch (e) {

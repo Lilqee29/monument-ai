@@ -1,0 +1,95 @@
+name: Build Development IPA (Relica Dev Client)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Select latest available Xcode
+        run: |
+          LATEST=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -n 1)
+          if [ -z "$LATEST" ]; then LATEST="/Applications/Xcode.app"; fi
+          echo "Selecting $LATEST"
+          sudo xcode-select -s "$LATEST"
+          xcodebuild -version
+
+      - name: Install JS deps
+        run: npm install --legacy-peer-deps
+
+      - name: Fix truncated sf-symbols-typescript declaration (upstream bug)
+        run: |
+          FILE="node_modules/sf-symbols-typescript/dist/index.d.ts"
+          if [ -f "$FILE" ]; then
+            LAST=$(tail -1 "$FILE")
+            if echo "$LAST" | grep -q "^| '"; then
+              printf "'" >> "$FILE"
+              printf ";\n" >> "$FILE"
+            fi
+          fi
+
+      - name: Fix abs() ambiguity in expo-modules-jsi (upstream bug)
+        run: |
+          FILE="node_modules/expo-modules-jsi/apple/Sources/ExpoModulesJSI/Coding/JavaScriptCodable+Date.swift"
+          if [ -f "$FILE" ]; then
+            perl -pi -e 's/abs\(milliseconds\)/milliseconds.magnitude/' "$FILE"
+          fi
+
+      - name: Prebuild native iOS project
+        env:
+          EXPO_ROUTER_DISABLE_RN_NAVIGATION_CHECK: "1"
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          EXPO_PUBLIC_OPENROUTER_API_KEY: ${{ secrets.EXPO_PUBLIC_OPENROUTER_API_KEY }}
+          EXPO_PUBLIC_GEMINI_API_KEY: ${{ secrets.EXPO_PUBLIC_GEMINI_API_KEY }}
+        run: npx expo prebuild --platform ios --clean
+
+      - name: Install CocoaPods
+        run: |
+          cd ios
+          pod install --repo-update
+
+      - name: Build unsigned DEBUG archive (Expo Dev Client)
+        env:
+          EXPO_ROUTER_DISABLE_RN_NAVIGATION_CHECK: "1"
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          EXPO_PUBLIC_OPENROUTER_API_KEY: ${{ secrets.EXPO_PUBLIC_OPENROUTER_API_KEY }}
+          EXPO_PUBLIC_GEMINI_API_KEY: ${{ secrets.EXPO_PUBLIC_GEMINI_API_KEY }}
+        run: |
+          xcodebuild \
+            -workspace ios/RELICA.xcworkspace \
+            -scheme RELICA \
+            -configuration Debug \
+            -sdk iphoneos \
+            -archivePath build/RelicaDev.xcarchive \
+            archive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM=""
+
+      - name: Package IPA (unsigned)
+        run: |
+          mkdir -p Payload
+          cp -r build/RelicaDev.xcarchive/Products/Applications/*.app Payload/
+          zip -r RelicaDev.ipa Payload
+
+      - name: Upload Dev Client IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RelicaDev-unsigned-ipa
+          path: RelicaDev.ipa
+          retention-days: 14

@@ -91,9 +91,14 @@ export async function getDemoMode(): Promise<boolean> {
   try {
     const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
     const val = await AsyncStorage.getItem(DEMO_KEY);
+    if (val === null) {
+      // Default to DEMO MODE enabled on initial install/sideload
+      await AsyncStorage.setItem(DEMO_KEY, 'true');
+      return true;
+    }
     return val === 'true';
   } catch {
-    return false;
+    return true; // Fallback to demo mode if storage fails
   }
 }
 

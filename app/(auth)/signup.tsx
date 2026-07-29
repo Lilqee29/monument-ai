@@ -18,11 +18,28 @@ export default function SignUpScreen() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const { startOAuthFlow: startGoogleFlow } = useOAuth({ strategy: "oauth_google" });
-  const { startOAuthFlow: startAppleFlow } = useOAuth({ strategy: "oauth_apple" });
+  let startGoogleFlow: any = null;
+  let startAppleFlow: any = null;
+  try {
+    const googleRes = useOAuth({ strategy: "oauth_google" });
+    startGoogleFlow = googleRes.startOAuthFlow;
+  } catch (e) {
+    console.warn("[SignUpScreen] Google OAuth hook warning:", e);
+  }
+
+  try {
+    const appleRes = useOAuth({ strategy: "oauth_apple" });
+    startAppleFlow = appleRes.startOAuthFlow;
+  } catch (e) {
+    console.warn("[SignUpScreen] Apple OAuth hook warning:", e);
+  }
 
   const onSelectAuth = async (strategy: 'oauth_google' | 'oauth_apple') => {
     const selectedAuth = strategy === 'oauth_google' ? startGoogleFlow : startAppleFlow;
+    if (!selectedAuth) {
+      Alert.alert('OAuth Unavailable', 'Social login is not available on this sideloaded build. Please use Demo Mode.');
+      return;
+    }
 
     try {
       const { createdSessionId, setActive: setOAuthActive } = await selectedAuth();
@@ -33,6 +50,7 @@ export default function SignUpScreen() {
       }
     } catch (err) {
       console.error("OAuth error", err);
+      Alert.alert('OAuth Error', 'Social login failed. Try Demo Mode.');
     }
   };
 

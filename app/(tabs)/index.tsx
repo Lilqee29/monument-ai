@@ -46,11 +46,11 @@ class CameraErrorBoundary extends Component<BoundaryProps, BoundaryState> {
 export default function CameraScreen() {
   breadcrumb('C01', 'CameraScreen render');
 
-  // Default to true for instant render — no spinner block on startup
+  // Default live camera to OFF on iOS sideloaded builds to prevent native AVCaptureSession aborts
+  const [showLiveCamera, setShowLiveCamera] = useState<boolean>(false);
   const [hasCamPermission, setHasCamPermission] = useState<boolean | null>(null);
   const [locationPermission, setLocationPermission] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [useFallbackUI, setUseFallbackUI] = useState(false);
   
   const cameraRef = useRef<CameraView>(null);
   const router = useRouter();
@@ -58,38 +58,12 @@ export default function CameraScreen() {
   const { t } = useLanguage();
   const { showToast } = useToast();
 
-  // Non-blocking permission check
+  // Non-blocking location permission check only — never auto-mount CameraView
   useEffect(() => {
     breadcrumb('C10', 'CameraScreen useEffect');
     let cancelled = false;
 
-    // Safety timeout: if permission call hangs native thread, default to fallback UI
-    const timer = setTimeout(() => {
-      if (!cancelled && hasCamPermission === null) {
-        breadcrumb('C15', 'Camera permission check timed out, enabling fallback');
-        setHasCamPermission(false);
-      }
-    }, 1500);
-
     (async () => {
-      try {
-        if (Platform.OS === 'web') {
-          setHasCamPermission(true);
-          return;
-        }
-        const { status } = await Camera.getCameraPermissionsAsync();
-        if (!cancelled) {
-          setHasCamPermission(status === 'granted');
-          breadcrumb('C11', `camera permission: ${status}`);
-        }
-      } catch (e: any) {
-        breadcrumb('C12', `camera perm check error: ${e?.message}`);
-        if (!cancelled) {
-          setHasCamPermission(false);
-          setUseFallbackUI(true);
-        }
-      }
-
       try {
         const { status } = await Location.getForegroundPermissionsAsync();
         if (!cancelled) {
@@ -102,7 +76,6 @@ export default function CameraScreen() {
 
     return () => {
       cancelled = true;
-      clearTimeout(timer);
     };
   }, []);
 
@@ -111,10 +84,14 @@ export default function CameraScreen() {
       breadcrumb('C20', 'Requesting camera permission');
       const { status } = await Camera.requestCameraPermissionsAsync();
       setHasCamPermission(status === 'granted');
+      if (status === 'granted') {
+        setShowLiveCamera(true);
+      }
     } catch (e: any) {
       breadcrumb('C22', `camera request error: ${e?.message}`);
       setHasCamPermission(false);
-      setUseFallbackUI(true);
+      setShowLiveCamera(false);
+      showToast('Live camera restricted on sideload build. Use gallery.', 'info');
     }
   }, []);
 
@@ -204,7 +181,7 @@ export default function CameraScreen() {
           <Text style={styles.primaryActionText}>SELECT FROM GALLERY</Text>
         </TouchableOpacity>
 
-        {hasCamPermission === false && !useFallbackUI && (
+        {!showLiveCamera && (
           <TouchableOpacity onPress={requestCameraPermission} style={styles.secondaryActionBtn}>
             <Text style={styles.secondaryActionText}>ENABLE LIVE CAMERA</Text>
           </TouchableOpacity>
@@ -216,7 +193,7 @@ export default function CameraScreen() {
   return (
     <View style={styles.container}>
       {/* Native Camera View wrapped in Error Boundary */}
-      {hasCamPermission === true && !useFallbackUI ? (
+      {showLiveCamera && hasCamPermission === true ? (
         <CameraErrorBoundary fallback={FallbackViewfinder}>
           <CameraView
             ref={cameraRef}
@@ -257,7 +234,7 @@ export default function CameraScreen() {
         </View>
 
         {/* Center Hint (Viewfinder corners for live view) */}
-        {hasCamPermission === true && !useFallbackUI && (
+        {showLiveCamera && hasCamPermission === true && (
           <View style={styles.centerTarget} pointerEvents="none">
             <View style={[styles.corner, styles.cornerTL]} />
             <View style={[styles.corner, styles.cornerTR]} />
@@ -274,7 +251,7 @@ export default function CameraScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={hasCamPermission === true && !useFallbackUI ? takePicture : pickImage}
+            onPress={showLiveCamera && hasCamPermission === true ? takePicture : pickImage}
             disabled={isProcessing}
             style={styles.shutterRing}
           >

@@ -1,30 +1,29 @@
-import * as SecureStore from 'expo-secure-store';
+/**
+ * Token Cache for Clerk Authentication.
+ * Uses an in-memory map to avoid iOS Keychain (SecureStore) entitlement crashes
+ * on sideloaded (free Apple ID) builds.
+ */
+
+const memoryCache = new Map<string, string>();
 
 export const tokenCache = {
-  async getToken(key: string) {
+  async getToken(key: string): Promise<string | null> {
     try {
-      const item = await SecureStore.getItemAsync(key);
-      return item;
-    } catch (error) {
-      console.warn('SecureStore get item warning: ', error);
-      try {
-        await SecureStore.deleteItemAsync(key);
-      } catch {
-        // ignore
-      }
+      return memoryCache.get(key) ?? null;
+    } catch {
       return null;
     }
   },
-  async saveToken(key: string, value: string) {
+  async saveToken(key: string, value: string): Promise<void> {
     try {
-      await SecureStore.setItemAsync(key, value);
-    } catch (err) {
-      console.warn('SecureStore save token warning: ', err);
+      memoryCache.set(key, value);
+    } catch {
+      // ignore
     }
   },
-  async clearToken(key: string) {
+  async clearToken(key: string): Promise<void> {
     try {
-      await SecureStore.deleteItemAsync(key);
+      memoryCache.delete(key);
     } catch {
       // ignore
     }

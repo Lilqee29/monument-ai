@@ -31,7 +31,22 @@ import { ExpeditionPlayback } from '@/components/map/ExpeditionPlayback';
 import { useDemoMode } from '@/lib/demoMode';
 import { DEMO_MAP_MARKERS } from '@/lib/demoData';
 
-// ─── Dark map style (disabled — Apple Maps ignores customMapStyle) ────────────
+// ─── Map Error Boundary ────────────────────────────────────────────────────────
+class MapErrorBoundary extends React.Component<{ fallback: React.ReactNode; children: React.ReactNode }, { hasError: boolean }> {
+  state = { hasError: false };
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(err: any) {
+    console.warn('[MapScreen] Native MapView failed, rendering fallback:', err);
+  }
+  render() {
+    if (this.state.hasError) return this.props.fallback;
+    return this.props.children;
+  }
+}
+
+// ─── Dark map style ────────────────────────────────────────────────────────────
 const darkMapStyle: any[] = [];
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
@@ -203,12 +218,18 @@ export default function MapScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
 
-      <MapView
-        ref={mapRef}
-        style={StyleSheet.absoluteFill}
-        initialRegion={region}
-        showsUserLocation
-        showsBuildings={false}
+      <MapErrorBoundary fallback={
+        <View style={{ flex: 1, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <Text style={{ color: '#ffffff', fontSize: 16, fontWeight: '700', letterSpacing: 2 }}>WORLD EXPLORER MAP</Text>
+          <Text style={{ color: '#8e8e93', fontSize: 13, marginTop: 8, textAlign: 'center' }}>Map view requires active location services.</Text>
+        </View>
+      }>
+        <MapView
+          ref={mapRef}
+          style={StyleSheet.absoluteFill}
+          initialRegion={region}
+          showsUserLocation={Platform.OS !== 'ios'}
+          showsBuildings={false}
         mapType={mapType === 'satellite' ? 'satellite' : 'standard'}
         onRegionChangeComplete={handleRegionChange}
         // @ts-ignore — react-native-maps onError works at runtime but type availability varies by platform/version
@@ -262,6 +283,7 @@ export default function MapScreen() {
           return <PlayerAvatarMarker key={pid} pid={pid} name={player.name} location={player.location} />;
         })}
       </MapView>
+      </MapErrorBoundary>
 
       {mapError && (
         <View style={[StyleSheet.absoluteFill, styles.errorOverlay]}>

@@ -10,6 +10,14 @@ import { breadcrumb } from '@/lib/crashDebug';
 
 export async function setupNotifications(): Promise<boolean> {
   breadcrumb('N10', 'setupNotifications — START');
+  // Sideloaded iOS builds (free Apple ID) lack the aps-environment entitlement.
+  // Calling native UNUserNotificationCenter / registerForRemoteNotifications throws
+  // an uncaught NSException on iOS that aborts the app process immediately.
+  if (Platform.OS === 'ios') {
+    breadcrumb('N11-iOS-SKIP', 'Skipping native notifications on iOS sideload build');
+    console.log('[Notifications] Skipping native notification setup on iOS');
+    return false;
+  }
   try {
     Notifications.setNotificationHandler({
       handleNotification: async () => ({

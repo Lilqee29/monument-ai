@@ -1,5 +1,6 @@
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
 import { WORLD_LANDMARKS } from '@/constants/landmarks';
 
 // Distance calculation
@@ -23,6 +24,10 @@ let lastNotificationTime: number = 0;
 
 // Safe foreground geofencing watcher (to prevent Expo Go background crashes)
 export async function requestGeofencingPermissions() {
+  if (Platform.OS === 'ios') {
+    console.log('[Geofencing] Skipping native notification/geofencing setup on iOS sideload build');
+    return;
+  }
   try {
     const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
     const { status: notifStatus } = await Notifications.requestPermissionsAsync();

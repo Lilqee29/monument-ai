@@ -2,6 +2,9 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { DynamicQuest } from './ai';
 import { supabase } from '@/lib/supabase';
 import { useUser } from '@clerk/clerk-expo';
+import { breadcrumb } from '@/lib/crashDebug';
+
+breadcrumb('Q00', 'questContext.tsx loaded');
 
 export type MultiplayerPlayer = {
   id: string;
@@ -35,6 +38,7 @@ const QuestContext = createContext<QuestContextType | null>(null);
 export function QuestProvider({ children }: { children: React.ReactNode }) {
   const [activeQuest, setActiveQuest] = useState<DynamicQuest | null>(null);
   const [questTimeLeft, setQuestTimeLeft] = useState<number>(0);
+  breadcrumb('Q01', 'QuestProvider render');
   
   const [roomPin, setRoomPin] = useState<string | null>(null);
   const [players, setPlayers] = useState<Record<string, MultiplayerPlayer>>({});

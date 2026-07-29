@@ -4,25 +4,39 @@
  */
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import { breadcrumb } from '@/lib/crashDebug';
+
+breadcrumb('N00', 'notifications.ts loaded');
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
 export async function setupNotifications(): Promise<boolean> {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: true,
-      shouldShowBanner: true,
-      shouldShowList: true,
-    }),
-  });
+  breadcrumb('N10', 'setupNotifications — START');
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+    breadcrumb('N11', 'setNotificationHandler done');
 
-  const { status: existing } = await Notifications.getPermissionsAsync();
-  if (existing === 'granted') return true;
+    const { status: existing } = await Notifications.getPermissionsAsync();
+    breadcrumb('N12', `existing permission: ${existing}`);
+    if (existing === 'granted') return true;
 
-  const { status } = await Notifications.requestPermissionsAsync();
-  return status === 'granted';
+    breadcrumb('N13', 'requesting notification permissions');
+    const { status } = await Notifications.requestPermissionsAsync();
+    breadcrumb('N14', `new permission status: ${status}`);
+    return status === 'granted';
+  } catch (e: any) {
+    breadcrumb('N15', `setupNotifications ERROR: ${e?.message ?? e}`);
+    console.error('[Notifications] setup failed:', e);
+    return false;
+  }
 }
 
 // ─── Notification Types ───────────────────────────────────────────────────────

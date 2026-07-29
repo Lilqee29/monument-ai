@@ -12,6 +12,9 @@ import {
   getDemoMode,
   setDemoMode,
 } from './demoData';
+import { breadcrumb } from '@/lib/crashDebug';
+
+breadcrumb('D00', 'demoMode.tsx loaded');
 
 interface DemoUser {
   id: string;
@@ -66,9 +69,11 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [sessions, setSessions] = useState<Session[]>(DEMO_SESSIONS);
   const [quest, setQuest] = useState<DemoQuest>(DEMO_QUEST);
+  breadcrumb('D01', 'DemoProvider render');
 
   // Check demo flag on mount
   useEffect(() => {
+    breadcrumb('D10', 'DemoProvider useEffect — getDemoMode()');
     getDemoMode().then((v) => {
       setIsDemoMode(v);
       setIsLoading(false);

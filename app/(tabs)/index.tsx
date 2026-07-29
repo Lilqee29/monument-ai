@@ -11,9 +11,14 @@ import * as MediaLibrary from 'expo-media-library';
 import { useLanguage } from '@/lib/languageContext';
 import { useToast } from '@/components/Toast';
 import * as Haptics from 'expo-haptics';
+import { breadcrumb } from '@/lib/crashDebug';
+
+breadcrumb('C00', 'camera/index.tsx loaded — all native imports done');
 
 export default function CameraScreen() {
+  breadcrumb('C01', 'CameraScreen render');
   const [permission, requestPermission] = useCameraPermissions();
+  breadcrumb('C02', `useCameraPermissions: ${permission ? 'resolved' : 'null'}`);
   const [locationPermission, setLocationPermission] = useState<boolean | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const cameraRef = useRef<CameraView>(null);
@@ -23,10 +28,26 @@ export default function CameraScreen() {
   const { showToast } = useToast();
 
   useEffect(() => {
+    breadcrumb('C10', 'camera useEffect — requesting permissions');
     (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      setLocationPermission(status === 'granted');
-      await MediaLibrary.requestPermissionsAsync();
+      try {
+        breadcrumb('C11', 'requesting Location permissions');
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        setLocationPermission(status === 'granted');
+        breadcrumb('C12', `location permission: ${status}`);
+      } catch (e: any) {
+        breadcrumb('C13', `Location permission ERROR: ${e?.message ?? e}`);
+        console.warn('[CameraScreen] Location permission failed:', e);
+        setLocationPermission(false);
+      }
+      try {
+        breadcrumb('C14', 'requesting MediaLibrary permissions');
+        await MediaLibrary.requestPermissionsAsync();
+        breadcrumb('C15', 'MediaLibrary permission done');
+      } catch (e: any) {
+        breadcrumb('C16', `MediaLibrary permission ERROR: ${e?.message ?? e}`);
+        console.warn('[CameraScreen] MediaLibrary permission failed:', e);
+      }
     })();
   }, []);
 

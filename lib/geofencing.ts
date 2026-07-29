@@ -1,6 +1,9 @@
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import { WORLD_LANDMARKS } from '@/constants/landmarks';
+import { breadcrumb } from '@/lib/crashDebug';
+
+breadcrumb('G00', 'geofencing.ts loaded');
 
 // Distance calculation
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {

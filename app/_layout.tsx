@@ -1,8 +1,8 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import 'react-native-reanimated';
 import { 
   useFonts, 
@@ -24,8 +24,13 @@ import { setupNotifications } from '@/lib/notifications';
 import { CrashReporter, recordModuleError } from '@/components/CrashReporter';
 import { ToastProvider } from '@/components/Toast';
 import { DemoProvider, useDemoMode } from '@/lib/demoMode';
+import { breadcrumb, readLastBreadcrumbs, clearBreadcrumbs, installGlobalErrorHandlers, guardedAsync } from '@/lib/crashDebug';
 
 import "../global.css";
+
+// ── Install global error handlers ASAP (module scope) ───────────────
+installGlobalErrorHandlers();
+breadcrumb('00', 'module scope — _layout.tsx loaded');
 
 // ── Module-scope env-var check (safe — no throw) ────────────────────
 let publishableKey = '';
@@ -34,8 +39,10 @@ try {
   if (!publishableKey) {
     recordModuleError('CLERK_KEY', new Error('EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY is empty/undefined'));
   }
+  breadcrumb('01', `publishableKey: ${publishableKey ? '(set, len=' + publishableKey.length + ')' : '(MISSING)'}`);
 } catch (e) {
   recordModuleError('CLERK_KEY', e);
+  breadcrumb('01', `publishableKey ERROR: ${e}`);
 }
 
 SplashScreen.preventAutoHideAsync();
@@ -93,6 +100,7 @@ function AuthRedirectHandler() {
   const { isDemoMode, isLoading: demoLoading } = useDemoMode();
 
   useEffect(() => {
+    breadcrumb('30', `AuthRedirect: loaded=${isLoaded} signedIn=${isSignedIn} demo=${isDemoMode} demoLoading=${demoLoading} segments=${segments?.[0]}`);
     if (!isLoaded || !segments?.[0] || demoLoading) return;
 
     try {
@@ -102,6 +110,7 @@ function AuthRedirectHandler() {
 
       // Demo mode — skip all auth, go straight to tabs
       if (isDemoMode) {
+        breadcrumb('31', `demo mode — inAuth=${inAuthGroup} inOnboarding=${inOnboarding}`);
         if (inAuthGroup || inOnboarding) {
           router.replace('/(tabs)');
         }
@@ -112,6 +121,7 @@ function AuthRedirectHandler() {
         const onboardingCompleted = user.unsafeMetadata?.onboardingCompleted;
         const shouldShowOnboarding = onboardingCompleted === false || onboardingCompleted === undefined;
         
+        breadcrumb('32', `signed in — onboardingCompleted=${onboardingCompleted} shouldShow=${shouldShowOnboarding}`);
         if (shouldShowOnboarding) {
           if (!inOnboarding) {
             router.replace('/onboarding');
@@ -122,11 +132,16 @@ function AuthRedirectHandler() {
           router.replace('/(tabs)');
         }
         
-        requestGeofencingPermissions().catch(console.warn);
+        requestGeofencingPermissions().catch((e) => {
+          breadcrumb('33', `geofencing error: ${e}`);
+          console.warn(e);
+        });
       } else if (!isSignedIn && (inTabsGroup || inOnboarding)) {
+        breadcrumb('34', 'not signed in, redirecting to login');
         router.replace('/(auth)/login');
       }
     } catch (e) {
+      breadcrumb('35', `navigation redirect FAILED: ${e}`);
       console.warn("Navigation redirect failed:", e);
     }
   }, [isSignedIn, isLoaded, segments, user, isDemoMode, demoLoading]);
@@ -205,15 +220,65 @@ export default function RootLayout() {
     Inter_700Bold,
   });
 
+  // Show last breadcrumbs FULL SCREEN for debugging — can't miss this
+  const [lastBreadcrumbs, setLastBreadcrumbs] = useState<string>('');
+  const [showDebugScreen, setShowDebugScreen] = useState(false);
+
+  // On mount: read previous session's breadcrumbs
   useEffect(() => {
+    readLastBreadcrumbs().then(text => {
+      if (text && text !== '(no breadcrumbs)' && text !== '(no breadcrumb file)') {
+        setLastBreadcrumbs(text);
+        setShowDebugScreen(true); // BLOCK the app with full-screen debug info
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    breadcrumb('10', `fonts: loaded=${fontsLoaded} error=${fontError}`);
     if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync();
-      setupNotifications().catch(console.warn);
+      guardedAsync('SPLASH-HIDE', () => SplashScreen.hideAsync()).then(() => {
+        breadcrumb('11', 'splash hidden — calling setupNotifications');
+        guardedAsync('NOTIFICATIONS', () => setupNotifications()).then((granted) => {
+          breadcrumb('12', `notifications done — granted=${granted}`);
+        });
+      });
     }
   }, [fontsLoaded, fontError]);
 
   if (!fontsLoaded && !fontError) {
+    breadcrumb('09', 'fonts not loaded yet, returning null');
     return null;
+  }
+
+  breadcrumb('20', 'rendering component tree');
+
+  // FULL-SCREEN crash debug — user must tap "Continue" to dismiss
+  if (showDebugScreen) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#000', padding: 16, paddingTop: 60 }}>
+        <Text style={{ color: '#ff4444', fontSize: 20, fontWeight: 'bold', marginBottom: 8 }}>
+          CRASH DEBUG — Previous Session
+        </Text>
+        <Text style={{ color: '#888', fontSize: 12, marginBottom: 12 }}>
+          Screenshot this screen, then tap Continue
+        </Text>
+        <ScrollView style={{ flex: 1, backgroundColor: '#111', borderRadius: 8, padding: 8 }}>
+          <Text style={{ color: '#0f0', fontSize: 11, fontFamily: 'Courier' }} selectable>
+            {lastBreadcrumbs}
+          </Text>
+        </ScrollView>
+        <TouchableOpacity
+          onPress={() => {
+            setShowDebugScreen(false);
+            clearBreadcrumbs();
+          }}
+          style={{ backgroundColor: '#c9a84c', paddingVertical: 16, borderRadius: 12, marginTop: 12, alignItems: 'center' }}
+        >
+          <Text style={{ color: '#000', fontSize: 16, fontWeight: 'bold' }}>Continue</Text>
+        </TouchableOpacity>
+      </View>
+    );
   }
 
   return (

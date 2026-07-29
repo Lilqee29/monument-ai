@@ -6,8 +6,12 @@ import { ChevronLeft, Compass } from 'lucide-react-native';
 import { useAssets } from 'expo-asset';
 import * as WebBrowser from 'expo-web-browser';
 import { useDemoMode } from '@/lib/demoMode';
+import { breadcrumb } from '@/lib/crashDebug';
+
+breadcrumb('LOG00', 'login.tsx loaded');
 
 WebBrowser.maybeCompleteAuthSession();
+breadcrumb('LOG01', 'maybeCompleteAuthSession done');
 
 const { width, height } = Dimensions.get('window');
 

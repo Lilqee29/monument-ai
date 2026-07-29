@@ -6,8 +6,12 @@ import { HapticTab } from '@/components/haptic-tab';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useLanguage } from '@/lib/languageContext';
+import { breadcrumb } from '@/lib/crashDebug';
+
+breadcrumb('T00', 'tabs/_layout.tsx loaded');
 
 export default function TabLayout() {
+  breadcrumb('T01', 'TabLayout render');
   const colorScheme = useColorScheme();
   const { t } = useLanguage();
   const scheme = (colorScheme ?? 'dark') as 'light' | 'dark';

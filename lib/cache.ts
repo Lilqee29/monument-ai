@@ -1,4 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
+import { breadcrumb } from '@/lib/crashDebug';
+
+breadcrumb('CA00', 'cache.ts loaded — SecureStore imported');
 
 export const tokenCache = {
   async getToken(key: string) {

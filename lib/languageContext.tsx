@@ -1,6 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { translations } from './translations';
+import { breadcrumb } from '@/lib/crashDebug';
+
+breadcrumb('L00', 'languageContext.tsx loaded');
 
 export type Language = 'English' | 'Français' | 'Español';
 
@@ -24,12 +27,18 @@ const LanguageContext = createContext<LanguageContextType>({
 
 export const LanguageProvider = ({ children }: { children: React.ReactNode }) => {
   const [language, setLanguageState] = useState<Language>('English');
+  breadcrumb('L01', 'LanguageProvider render');
 
   useEffect(() => {
+    breadcrumb('L10', 'LanguageProvider useEffect — reading SecureStore');
     SecureStore.getItemAsync('app_language').then(val => {
+      breadcrumb('L11', `SecureStore returned: ${val}`);
       if (val === 'English' || val === 'Français' || val === 'Español') {
         setLanguageState(val as Language);
       }
+    }).catch((e) => {
+      breadcrumb('L12', `SecureStore ERROR: ${e}`);
+      console.warn('[LanguageProvider] SecureStore failed:', e);
     });
   }, []);
 

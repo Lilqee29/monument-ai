@@ -607,7 +607,7 @@ export default function SettingsScreen() {
               value={notifications}
               onValueChange={async v => {
                 setNotifications(v);
-                if (v) await Notifications.requestPermissionsAsync();
+                if (v && Platform.OS !== 'ios') await Notifications.requestPermissionsAsync();
               }}
               trackColor={{ false: '#1a1a1a', true: '#c9a84c' }}
               thumbColor="#fff"

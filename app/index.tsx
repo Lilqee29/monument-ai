@@ -33,8 +33,7 @@ export default function Index() {
         className="flex-1"
       >
         <View className="flex-1 bg-black/60 items-center justify-end pb-20 px-8">
-          <Animated.View 
-            entering={FadeInDown.duration(1000).springify()}
+          <Animated.View
             className="items-center"
           >
             <Text className="text-gold text-5xl font-serif mb-4 text-center">RELICA</Text>
@@ -43,8 +42,7 @@ export default function Index() {
             </Text>
           </Animated.View>
 
-          <Animated.View 
-            entering={FadeInDown.duration(1000).delay(300).springify()}
+          <Animated.View
             className="w-full"
           >
             <View className="flex-row justify-center gap-4 mb-10">

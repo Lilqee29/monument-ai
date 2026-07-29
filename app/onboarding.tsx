@@ -237,7 +237,6 @@ export default function OnboardingScreen() {
 
       <Animated.View 
         key={`content-${index}`}
-        entering={FadeIn.duration(400)}
         style={styles.contentCard}
       >
         <View style={styles.eyebrowRow}>

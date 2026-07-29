@@ -121,7 +121,7 @@ export default function LeaderboardScreen() {
           )}
 
           {myEntry && myRank > 10 && (
-            <Animated.View entering={FadeInDown.delay(200)} style={styles.myBanner}>
+            <Animated.View style={styles.myBanner}>
               <Text style={styles.myBannerLabel}>Your Rank</Text>
               <Text style={styles.myBannerRank}>#{myRank}</Text>
               <Text style={styles.myBannerXP}>{myEntry.xp} XP</Text>
@@ -140,7 +140,6 @@ export default function LeaderboardScreen() {
               entries.map((entry, index) => (
                 <Animated.View
                   key={entry.user_id}
-                  entering={FadeInDown.delay(index * 40)}
                   style={[
                     styles.rankRow,
                     entry.user_id === auth.userId && styles.rankRowMe,
@@ -190,7 +189,7 @@ export default function LeaderboardScreen() {
 
 function PodiumCard({ entry, rank, isMe, featured }: { entry: LeaderboardEntry; rank: number; isMe: boolean; featured?: boolean }) {
   return (
-    <Animated.View entering={ZoomIn.delay(rank * 100)} style={[styles.podiumCard, featured && styles.podiumFeatured]}>
+    <Animated.View style={[styles.podiumCard, featured && styles.podiumFeatured]}>
       <View style={[styles.podiumAvatar, featured && styles.podiumAvatarFeatured, { borderColor: MEDAL_COLORS[rank - 1] }]}>
         <Text style={styles.podiumAvatarText}>{entry.display_name[0]}</Text>
       </View>

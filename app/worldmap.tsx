@@ -100,7 +100,7 @@ function RegionTile({ stat, delay }: { stat: RegionStat; delay: number }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <Animated.View entering={FadeInUp.delay(delay)}>
+    <Animated.View>
       <TouchableOpacity
         style={regionStyles.tile}
         onPress={() => setExpanded(e => !e)}
@@ -214,7 +214,7 @@ export default function WorldMapScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
-        <Animated.View entering={FadeInUp.delay(0)} style={screenStyles.globalBanner}>
+        <Animated.View style={screenStyles.globalBanner}>
           <LinearGradient colors={['#1a1500', '#0e0e0e']} style={screenStyles.bannerGradient}>
             <View style={screenStyles.globeRing}>
               <Text style={screenStyles.globePct}>{globalPct}%</Text>
@@ -253,7 +253,7 @@ export default function WorldMapScreen() {
         )}
 
         {!loading && totalCountries === 0 && (
-          <Animated.View entering={FadeInUp.delay(300)} style={screenStyles.cta}>
+          <Animated.View style={screenStyles.cta}>
             <Text style={{ fontSize: 40, marginBottom: 12 }}>🌍</Text>
             <Text style={screenStyles.ctaTitle}>Your map is empty!</Text>
             <Text style={screenStyles.ctaSub}>

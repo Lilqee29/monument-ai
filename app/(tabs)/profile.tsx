@@ -372,7 +372,7 @@ export default function ProfileScreen() {
           </View>
 
           {/* Demo Banner */}
-          <Animated.View entering={FadeInDown.duration(500)} style={[styles.userCard, { borderColor: 'rgba(201,168,76,0.3)' }]}>
+          <Animated.View style={[styles.userCard, { borderColor: 'rgba(201,168,76,0.3)' }]}>
             <View style={styles.avatarContainer}>
               <View style={[styles.avatar, { backgroundColor: '#c9a84c22', borderColor: '#c9a84c' }]}>
                 <Text style={styles.avatarText}>D</Text>
@@ -386,7 +386,7 @@ export default function ProfileScreen() {
           <DailyMonumentCard />
 
           {/* Stats */}
-          <Animated.View entering={FadeInDown.delay(200).duration(600)} style={styles.statsRow}>
+          <Animated.View style={styles.statsRow}>
             <View style={styles.statBox}>
               <Text style={styles.statValue}>{demoMyXP}</Text>
               <Text style={styles.statLabel}>XP</Text>
@@ -406,7 +406,7 @@ export default function ProfileScreen() {
           </Animated.View>
 
           {/* Streak */}
-          <Animated.View entering={FadeInDown.delay(300).duration(600)} style={styles.streakCard}>
+          <Animated.View style={styles.streakCard}>
             <Text style={styles.streakEmoji}>{streakEmoji(demoStreak.currentStreak)}</Text>
             <View style={styles.streakInfo}>
               <Text style={styles.streakTitle}>{streakTitle(demoStreak.currentStreak)}</Text>
@@ -455,7 +455,7 @@ export default function ProfileScreen() {
         </View>
 
         {/* ── User Card ───────────────────────────────────────────────────── */}
-        <Animated.View entering={FadeInDown.duration(700)} style={styles.userCard}>
+        <Animated.View style={styles.userCard}>
           <View style={styles.avatarContainer}>
             <Image source={{ uri: user?.imageUrl }} style={styles.avatar} />
             <TouchableOpacity onPress={pickImage} style={styles.cameraBtn}>
@@ -492,7 +492,7 @@ export default function ProfileScreen() {
         </View>
 
         {/* ── Streak Widget ────────────────────────────────────────────────── */}
-        <Animated.View entering={FadeInUp.delay(80)} style={styles.section}>
+        <Animated.View style={styles.section}>
           <LinearGradient
             colors={streak.currentStreak >= 7 ? ['#3d1500', '#1a0a00'] : ['#1a1a1a', '#141414']}
             style={streakSt.card}
@@ -541,7 +541,7 @@ export default function ProfileScreen() {
         </Animated.View>
 
         {/* ── Quick Nav Tiles ──────────────────────────────────────────────── */}
-        <Animated.View entering={FadeInUp.delay(130)} style={navSt.row}>
+        <Animated.View style={navSt.row}>
           <TouchableOpacity style={navSt.tile} onPress={() => router.push('/worldmap')}>
             <LinearGradient colors={['#001a1a', '#0e0e0e']} style={navSt.tileGrad}>
               <Globe size={24} color="#00d2d3" />
@@ -561,7 +561,7 @@ export default function ProfileScreen() {
         </Animated.View>
 
         {/* ── Leaderboard ──────────────────────────────────────────────────── */}
-        <Animated.View entering={FadeInUp.delay(160)} style={styles.section}>
+        <Animated.View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Trophy size={16} color="#c9a84c" />
             <Text style={styles.sectionTitle}>Global Leaderboard</Text>
@@ -589,7 +589,7 @@ export default function ProfileScreen() {
         </Animated.View>
 
         {/* ── AI Mini Quiz ─────────────────────────────────────────────────── */}
-        <Animated.View entering={FadeInUp.delay(200)} style={styles.section}>
+        <Animated.View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Brain size={16} color="#c9a84c" />
             <Text style={styles.sectionTitle}>Daily Monument Quiz</Text>
@@ -696,7 +696,7 @@ export default function ProfileScreen() {
                 key={title.id}
                 onPress={() => Alert.alert(title.emoji + ' ' + title.name, title.unlocked ? title.context : '🔒 Not yet unlocked. Keep exploring!')}
               >
-                <Animated.View entering={ZoomIn.delay(idx * 40)} style={[styles.badge, !title.unlocked && styles.badgeLocked]}>
+                <Animated.View style={[styles.badge, !title.unlocked && styles.badgeLocked]}>
                   <View style={[styles.badgeCircle, { borderColor: title.unlocked ? title.color : '#333' }]}>
                     <Text style={styles.badgeEmoji}>{title.emoji}</Text>
                   </View>
@@ -732,7 +732,6 @@ export default function ProfileScreen() {
               {sessions.slice(0, 4).map((session, index) => (
                 <Animated.View
                   key={session.id}
-                  entering={FadeInRight.delay(index * 80)}
                   style={[styles.galleryCard, { height: index % 2 === 0 ? 170 : 220 }]}
                 >
                   <TouchableOpacity onPress={() => router.push(`/session/${session.id}`)} style={{ flex: 1 }}>

@@ -71,9 +71,26 @@
       "expo-sharing",
       "expo-status-bar",
       "expo-web-browser",
-      "expo-camera",
-      "expo-media-library",
-      "expo-image-picker",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "RELICA uses the camera to photograph and identify monuments.",
+          "microphonePermission": "RELICA uses the microphone for video recording when capturing monuments."
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "RELICA saves monument photos to your photo library.",
+          "savePhotosPermission": "RELICA saves monument photos to your photo library."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "RELICA allows you to pick monument photos from your library."
+        }
+      ],
       ["react-native-maps", {}]
     ],
     "experiments": {

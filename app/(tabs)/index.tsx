@@ -132,6 +132,7 @@ export default function CameraScreen() {
         ref={cameraRef}
         style={StyleSheet.absoluteFill}
         facing="back"
+        mute={true}
       />
       
       {/* Overlay UI - Moved outside CameraView to fix warning/black screen */}

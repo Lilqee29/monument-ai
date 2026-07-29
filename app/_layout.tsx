@@ -24,7 +24,7 @@ import { setupNotifications } from '@/lib/notifications';
 import { CrashReporter, recordModuleError } from '@/components/CrashReporter';
 import { ToastProvider } from '@/components/Toast';
 import { DemoProvider, useDemoMode } from '@/lib/demoMode';
-import { breadcrumb, readLastBreadcrumbs, clearBreadcrumbs, installGlobalErrorHandlers, guardedAsync, enableBreadcrumbStorage } from '@/lib/crashDebug';
+import { breadcrumb, readLastBreadcrumbs, clearBreadcrumbs, installGlobalErrorHandlers, guardedAsync, enableBreadcrumbStorage, readLastCrashFile, deleteLastCrashFile } from '@/lib/crashDebug';
 
 import "../global.css";
 
@@ -216,14 +216,38 @@ export default function RootLayout() {
     Inter_700Bold,
   });
 
-  // Show last breadcrumbs FULL SCREEN for debugging — can't miss this
+  // Show crash file + breadcrumbs FULL SCREEN for debugging — can't miss this
   const [lastBreadcrumbs, setLastBreadcrumbs] = useState<string>('');
+  const [lastCrashFile, setLastCrashFile] = useState<string>('');
   const [showDebugScreen, setShowDebugScreen] = useState(false);
 
-  // On mount: read previous session's breadcrumbs + install error handlers
+  // On mount: read previous session crash file + breadcrumbs + enable storage
   useEffect(() => {
     enableBreadcrumbStorage();
-    installGlobalErrorHandlers();
+    installGlobalErrorHandlers(); // no-op now but kept for safety
+
+    // Read crash file (primary — written by global error handler)
+    readLastCrashFile().then(payload => {
+      if (payload) {
+        const lines = [
+          `=== CRASH FILE (${payload.timestamp}) ===`,
+          `FATAL: ${payload.isFatal}`,
+          ``,
+          `MESSAGE:`,
+          payload.message,
+          ``,
+          `STACK:`,
+          payload.stack,
+          ``,
+          `=== BREADCRUMBS AT CRASH TIME ===`,
+          ...payload.breadcrumbs,
+        ];
+        setLastCrashFile(lines.join('\n'));
+        setShowDebugScreen(true);
+      }
+    });
+
+    // Also read SecureStore breadcrumbs as a secondary source
     readLastBreadcrumbs().then(text => {
       if (text && text !== '(no breadcrumbs)' && text !== '(no breadcrumb file)') {
         setLastBreadcrumbs(text);
@@ -255,25 +279,46 @@ export default function RootLayout() {
   if (showDebugScreen) {
     return (
       <View style={{ flex: 1, backgroundColor: '#000', padding: 16, paddingTop: 60 }}>
-        <Text style={{ color: '#ff4444', fontSize: 20, fontWeight: 'bold', marginBottom: 8 }}>
-          CRASH DEBUG — Previous Session
+        <Text style={{ color: '#ff4444', fontSize: 20, fontWeight: 'bold', marginBottom: 4 }}>
+          ‼️ CRASH DEBUG — Previous Session
         </Text>
-        <Text style={{ color: '#888', fontSize: 12, marginBottom: 12 }}>
-          Screenshot this screen, then tap Continue
+        <Text style={{ color: '#ff8800', fontSize: 12, marginBottom: 4 }}>
+          📸 SCREENSHOT THIS SCREEN then tap Continue
+        </Text>
+        <Text style={{ color: '#888', fontSize: 11, marginBottom: 8 }}>
+          Crash file: {lastCrashFile ? '✅ captured' : '❌ not found'} | Breadcrumbs: {lastBreadcrumbs && lastBreadcrumbs !== '(no breadcrumbs)' ? '✅' : '❌'}
         </Text>
         <ScrollView style={{ flex: 1, backgroundColor: '#111', borderRadius: 8, padding: 8 }}>
-          <Text style={{ color: '#0f0', fontSize: 11, fontFamily: 'Courier' }} selectable>
-            {lastBreadcrumbs}
-          </Text>
+          {lastCrashFile ? (
+            <Text style={{ color: '#ff6060', fontSize: 11, fontFamily: 'Courier' }} selectable>
+              {lastCrashFile}
+            </Text>
+          ) : null}
+          {lastCrashFile && lastBreadcrumbs && lastBreadcrumbs !== '(no breadcrumbs)' ? (
+            <Text style={{ color: '#ffcc00', fontSize: 11, fontFamily: 'Courier', marginTop: 16 }}>
+              {'\n=== SECURESTORE BREADCRUMBS (backup) ==='}
+            </Text>
+          ) : null}
+          {lastBreadcrumbs && lastBreadcrumbs !== '(no breadcrumbs)' && lastBreadcrumbs !== '(no breadcrumb file)' ? (
+            <Text style={{ color: '#0f0', fontSize: 11, fontFamily: 'Courier' }} selectable>
+              {lastCrashFile ? '' : '=== BREADCRUMBS (no crash file) ===\n'}{lastBreadcrumbs}
+            </Text>
+          ) : null}
+          {!lastCrashFile && (!lastBreadcrumbs || lastBreadcrumbs === '(no breadcrumbs)') ? (
+            <Text style={{ color: '#888', fontSize: 11, fontFamily: 'Courier' }}>
+              (No crash data captured — the file write likely raced the abort.\nCheck breadcrumbs for last known state.)
+            </Text>
+          ) : null}
         </ScrollView>
         <TouchableOpacity
           onPress={() => {
             setShowDebugScreen(false);
+            deleteLastCrashFile();
             clearBreadcrumbs();
           }}
           style={{ backgroundColor: '#c9a84c', paddingVertical: 16, borderRadius: 12, marginTop: 12, alignItems: 'center' }}
         >
-          <Text style={{ color: '#000', fontSize: 16, fontWeight: 'bold' }}>Continue</Text>
+          <Text style={{ color: '#000', fontSize: 16, fontWeight: 'bold' }}>Continue →</Text>
         </TouchableOpacity>
       </View>
     );

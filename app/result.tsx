@@ -8,7 +8,7 @@ import { supabase, createClerkSupabaseClient } from '@/lib/supabase';
 import { useAuth } from '@clerk/clerk-expo';
 import { uploadMonumentPhoto } from '@/lib/storage';
 import ConfettiCannon from 'react-native-confetti-cannon';
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 import * as Speech from 'expo-speech';
 import { useLanguage, languageCodeMap } from '@/lib/languageContext';
 import { recordScan } from '@/lib/streak';

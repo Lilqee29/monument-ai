@@ -1,8 +1,8 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, Component, ErrorInfo, ReactNode } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { CameraView, Camera } from 'expo-camera';
 import { useRouter } from 'expo-router';
-import { Image as ImageIcon, Sparkles, User, MapPin } from 'lucide-react-native';
+import { Image as ImageIcon, Sparkles, User, MapPin, Camera as CameraIcon } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
@@ -12,66 +12,109 @@ import { useToast } from '@/components/Toast';
 import * as Haptics from 'expo-haptics';
 import { breadcrumb } from '@/lib/crashDebug';
 
-// ─── Permission status type ───────────────────────────────────────────────────
-type PermStatus = 'undetermined' | 'granted' | 'denied';
+// ─── Camera Native Error Boundary ─────────────────────────────────────────────
+interface BoundaryProps {
+  fallback: ReactNode;
+  children: ReactNode;
+}
 
+interface BoundaryState {
+  hasError: boolean;
+}
+
+class CameraErrorBoundary extends Component<BoundaryProps, BoundaryState> {
+  state: BoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(_: Error): BoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    breadcrumb('C_ERR', `CameraView native render error: ${error?.message}`);
+    console.warn('[CameraScreen] Native camera view crashed, using fallback:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback;
+    }
+    return this.props.children;
+  }
+}
+
+// ─── Main Screen ─────────────────────────────────────────────────────────────
 export default function CameraScreen() {
   breadcrumb('C01', 'CameraScreen render');
 
-  // Manual permission state — avoids useCameraPermissions() hook which triggers
-  // AVFoundation native thread callbacks that crash on bridgeless new arch iOS builds.
-  const [camStatus, setCamStatus] = useState<PermStatus>('undetermined');
+  // Default to true for instant render — no spinner block on startup
+  const [hasCamPermission, setHasCamPermission] = useState<boolean | null>(null);
   const [locationPermission, setLocationPermission] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [useFallbackUI, setUseFallbackUI] = useState(false);
+  
   const cameraRef = useRef<CameraView>(null);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
   const { showToast } = useToast();
 
-  // Check permissions lazily inside useEffect — never during render
+  // Non-blocking permission check
   useEffect(() => {
-    breadcrumb('C10', 'CameraScreen useEffect — checking permissions');
+    breadcrumb('C10', 'CameraScreen useEffect');
     let cancelled = false;
 
+    // Safety timeout: if permission call hangs native thread, default to fallback UI
+    const timer = setTimeout(() => {
+      if (!cancelled && hasCamPermission === null) {
+        breadcrumb('C15', 'Camera permission check timed out, enabling fallback');
+        setHasCamPermission(false);
+      }
+    }, 1500);
+
     (async () => {
-      // Camera permission — check only, do NOT request automatically
       try {
+        if (Platform.OS === 'web') {
+          setHasCamPermission(true);
+          return;
+        }
         const { status } = await Camera.getCameraPermissionsAsync();
         if (!cancelled) {
-          setCamStatus(status as PermStatus);
+          setHasCamPermission(status === 'granted');
           breadcrumb('C11', `camera permission: ${status}`);
         }
       } catch (e: any) {
         breadcrumb('C12', `camera perm check error: ${e?.message}`);
-        if (!cancelled) setCamStatus('denied');
+        if (!cancelled) {
+          setHasCamPermission(false);
+          setUseFallbackUI(true);
+        }
       }
 
-      // Location — check only
       try {
         const { status } = await Location.getForegroundPermissionsAsync();
         if (!cancelled) {
           setLocationPermission(status === 'granted');
-          breadcrumb('C13', `location permission: ${status}`);
         }
       } catch (e: any) {
-        breadcrumb('C14', `location perm check error: ${e?.message}`);
+        console.warn('Location check failed:', e);
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, []);
 
-  // Request camera permission on button tap only
   const requestCameraPermission = useCallback(async () => {
     try {
       breadcrumb('C20', 'Requesting camera permission');
       const { status } = await Camera.requestCameraPermissionsAsync();
-      setCamStatus(status as PermStatus);
-      breadcrumb('C21', `camera permission result: ${status}`);
+      setHasCamPermission(status === 'granted');
     } catch (e: any) {
-      breadcrumb('C22', `camera permission request error: ${e?.message}`);
-      setCamStatus('denied');
+      breadcrumb('C22', `camera request error: ${e?.message}`);
+      setHasCamPermission(false);
+      setUseFallbackUI(true);
     }
   }, []);
 
@@ -84,7 +127,7 @@ export default function CameraScreen() {
           try {
             location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
           } catch (e) {
-            console.log('Could not get location', e);
+            console.log('Location fetch skipped');
           }
         }
 
@@ -98,7 +141,7 @@ export default function CameraScreen() {
           try {
             await MediaLibrary.saveToLibraryAsync(photo.uri);
           } catch (err) {
-            console.warn('Could not save to library', err);
+            console.warn('Save to library skipped');
           }
 
           router.push({
@@ -112,7 +155,7 @@ export default function CameraScreen() {
         }
       } catch (error) {
         console.error('Capture Error:', error);
-        showToast('Failed to take photo.', 'error');
+        showToast('Failed to take photo. Use photo library.', 'error');
       } finally {
         setIsProcessing(false);
       }
@@ -128,7 +171,7 @@ export default function CameraScreen() {
         base64: true,
       });
 
-      if (!result.canceled) {
+      if (!result.canceled && result.assets?.[0]?.uri) {
         router.push({
           pathname: '/result',
           params: {
@@ -142,97 +185,110 @@ export default function CameraScreen() {
     }
   };
 
-  // ─── Permission not yet checked (first render) ──────────────────────────────
-  if (camStatus === 'undetermined') {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color="#c9a84c" size="large" />
-      </View>
-    );
-  }
+  // Fallback Viewfinder for when camera hardware is unavailable or disabled
+  const FallbackViewfinder = (
+    <View style={styles.fallbackContainer}>
+      <View style={styles.viewfinderBox}>
+        {/* Corner Brackets */}
+        <View style={[styles.corner, styles.cornerTL]} />
+        <View style={[styles.corner, styles.cornerTR]} />
+        <View style={[styles.corner, styles.cornerBL]} />
+        <View style={[styles.corner, styles.cornerBR]} />
+        
+        <CameraIcon size={48} color="#ffffff" style={{ opacity: 0.3 }} />
+        <Text style={styles.fallbackTitle}>ARCHIVAL SCANNER</Text>
+        <Text style={styles.fallbackSub}>Select a photo from your library to archive a monument</Text>
 
-  // ─── Camera permission denied or not granted ────────────────────────────────
-  if (camStatus !== 'granted') {
-    return (
-      <View style={styles.center}>
-        <Sparkles size={64} color="#c9a84c" style={{ opacity: 0.5 }} />
-        <Text style={styles.title}>Enable Your Vision</Text>
-        <Text style={styles.subtitle}>
-          RELICA requires camera access to recognize and archive landmarks.
-        </Text>
-        <TouchableOpacity onPress={requestCameraPermission} style={styles.button}>
-          <Text style={styles.buttonText}>Grant Access</Text>
+        <TouchableOpacity onPress={pickImage} style={styles.primaryActionBtn}>
+          <ImageIcon size={18} color="#000000" style={{ marginRight: 8 }} />
+          <Text style={styles.primaryActionText}>SELECT FROM GALLERY</Text>
         </TouchableOpacity>
+
+        {hasCamPermission === false && !useFallbackUI && (
+          <TouchableOpacity onPress={requestCameraPermission} style={styles.secondaryActionBtn}>
+            <Text style={styles.secondaryActionText}>ENABLE LIVE CAMERA</Text>
+          </TouchableOpacity>
+        )}
       </View>
-    );
-  }
+    </View>
+  );
 
-  // ─── Camera granted — show viewfinder ──────────────────────────────────────
   return (
-    <View style={{ flex: 1, backgroundColor: '#000' }}>
-      <CameraView
-        ref={cameraRef}
-        style={StyleSheet.absoluteFill}
-        facing="back"
-        mute={true}
-      />
+    <View style={styles.container}>
+      {/* Native Camera View wrapped in Error Boundary */}
+      {hasCamPermission === true && !useFallbackUI ? (
+        <CameraErrorBoundary fallback={FallbackViewfinder}>
+          <CameraView
+            ref={cameraRef}
+            style={StyleSheet.absoluteFill}
+            facing="back"
+            mute={true}
+          />
+        </CameraErrorBoundary>
+      ) : (
+        FallbackViewfinder
+      )}
 
-      {/* Overlay UI */}
+      {/* Monochrome Apple Overlay UI */}
       <View
         style={[
           styles.overlay,
-          { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 110 },
+          { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 100 },
         ]}
         pointerEvents="box-none"
       >
-        {/* Top HUD */}
-        <View style={styles.row} pointerEvents="box-none">
+        {/* Top Navigation */}
+        <View style={styles.topRow} pointerEvents="box-none">
           <TouchableOpacity
             onPress={() => router.push('/(tabs)/profile')}
-            style={styles.circleBtn}
+            style={styles.iconCircle}
           >
-            <User color="white" size={24} />
+            <User color="#ffffff" size={20} />
           </TouchableOpacity>
 
           <View style={styles.modeBadge}>
-            <View style={styles.dot} />
+            <View style={styles.goldDot} />
             <Text style={styles.modeText}>{t('explorerMode')}</Text>
           </View>
 
-          <TouchableOpacity style={styles.circleBtn}>
-            <MapPin color={locationPermission ? '#c9a84c' : 'white'} size={22} />
+          <TouchableOpacity style={styles.iconCircle}>
+            <MapPin color={locationPermission ? '#c9a84c' : '#ffffff'} size={20} />
           </TouchableOpacity>
         </View>
 
-        {/* Hint */}
-        <View style={styles.hintWrap} pointerEvents="none">
-          <View style={styles.hintBox}>
+        {/* Center Hint (Viewfinder corners for live view) */}
+        {hasCamPermission === true && !useFallbackUI && (
+          <View style={styles.centerTarget} pointerEvents="none">
+            <View style={[styles.corner, styles.cornerTL]} />
+            <View style={[styles.corner, styles.cornerTR]} />
+            <View style={[styles.corner, styles.cornerBL]} />
+            <View style={[styles.corner, styles.cornerBR]} />
             <Text style={styles.hintText}>"{t('focusHint')}"</Text>
           </View>
-        </View>
+        )}
 
         {/* Bottom Controls */}
-        <View style={styles.controls} pointerEvents="box-none">
-          <TouchableOpacity onPress={pickImage} style={styles.circleBtn}>
-            <ImageIcon color="white" size={28} />
+        <View style={styles.bottomControls} pointerEvents="box-none">
+          <TouchableOpacity onPress={pickImage} style={styles.iconCircle}>
+            <ImageIcon color="#ffffff" size={22} />
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={takePicture}
+            onPress={hasCamPermission === true && !useFallbackUI ? takePicture : pickImage}
             disabled={isProcessing}
-            style={styles.shutterOuter}
+            style={styles.shutterRing}
           >
-            <View style={styles.shutterInner}>
+            <View style={styles.shutterButton}>
               {isProcessing ? (
-                <ActivityIndicator color="black" />
+                <ActivityIndicator color="#000000" />
               ) : (
-                <View style={styles.shutterDot} />
+                <View style={styles.shutterInnerDot} />
               )}
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.circleBtn}>
-            <Sparkles color="#c9a84c" size={28} />
+          <TouchableOpacity onPress={pickImage} style={styles.iconCircle}>
+            <Sparkles color="#c9a84c" size={22} />
           </TouchableOpacity>
         </View>
       </View>
@@ -241,128 +297,164 @@ export default function CameraScreen() {
 }
 
 const styles = StyleSheet.create({
-  center: {
+  container: {
     flex: 1,
-    backgroundColor: '#050505',
+    backgroundColor: '#000000',
+  },
+  fallbackContainer: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#000000',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 48,
+    padding: 24,
   },
-  title: {
-    color: '#fff',
-    textAlign: 'center',
-    fontSize: 24,
-    marginTop: 32,
-    fontWeight: '600',
+  viewfinderBox: {
+    width: '100%',
+    aspectRatio: 0.85,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    position: 'relative',
   },
-  subtitle: {
-    color: '#aaa',
+  fallbackTitle: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 3,
+    marginTop: 20,
+  },
+  fallbackSub: {
+    color: '#8e8e93',
+    fontSize: 13,
     textAlign: 'center',
-    fontSize: 16,
+    marginTop: 8,
+    lineHeight: 20,
+  },
+  primaryActionBtn: {
+    backgroundColor: '#ffffff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 8,
+    marginTop: 28,
+  },
+  primaryActionText: {
+    color: '#000000',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 2,
+  },
+  secondaryActionBtn: {
     marginTop: 16,
-    lineHeight: 26,
+    paddingVertical: 10,
   },
-  button: {
-    backgroundColor: '#c9a84c',
-    paddingHorizontal: 48,
-    paddingVertical: 16,
-    borderRadius: 16,
-    marginTop: 48,
-  },
-  buttonText: {
-    color: '#000',
-    fontWeight: 'bold',
-    fontSize: 18,
+  secondaryActionText: {
+    color: '#c9a84c',
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 2,
   },
   overlay: {
     flex: 1,
-    backgroundColor: 'transparent',
-    justifyContent: 'space-between',
-    paddingHorizontal: 32,
+    justify: 'space-between',
+    paddingHorizontal: 24,
   },
-  row: {
+  topRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  circleBtn: {
-    width: 48,
-    height: 48,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 24,
+  iconCircle: {
+    width: 44,
+    height: 44,
+    backgroundColor: 'rgba(28, 28, 30, 0.7)',
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
   },
   modeBadge: {
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    paddingHorizontal: 20,
+    backgroundColor: 'rgba(28, 28, 30, 0.7)',
+    paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
     flexDirection: 'row',
     alignItems: 'center',
   },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+  goldDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: '#c9a84c',
-    marginRight: 12,
+    marginRight: 10,
   },
   modeText: {
-    color: 'white',
+    color: '#ffffff',
     fontSize: 10,
-    fontWeight: 'bold',
-    letterSpacing: 3,
+    fontWeight: '700',
+    letterSpacing: 2.5,
     textTransform: 'uppercase',
   },
-  hintWrap: { alignItems: 'center' },
-  hintBox: {
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+  centerTarget: {
+    width: 260,
+    height: 260,
+    alignSelf: 'center',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
   },
+  corner: {
+    position: 'absolute',
+    width: 20,
+    height: 20,
+    borderColor: '#ffffff',
+  },
+  cornerTL: { top: 0, left: 0, borderTopWidth: 1.5, borderLeftWidth: 1.5 },
+  cornerTR: { top: 0, right: 0, borderTopWidth: 1.5, borderRightWidth: 1.5 },
+  cornerBL: { bottom: 0, left: 0, borderBottomWidth: 1.5, borderLeftWidth: 1.5 },
+  cornerBR: { bottom: 0, right: 0, borderBottomWidth: 1.5, borderRightWidth: 1.5 },
   hintText: {
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 12,
+    letterSpacing: 1,
     fontStyle: 'italic',
     textAlign: 'center',
   },
-  controls: {
+  bottomControls: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 8,
+    paddingHorizontal: 12,
   },
-  shutterOuter: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+  shutterRing: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     borderWidth: 2,
-    borderColor: 'rgba(201,168,76,0.3)',
+    borderColor: 'rgba(201, 168, 76, 0.4)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  shutterInner: {
-    width: 78,
-    height: 78,
-    backgroundColor: '#c9a84c',
-    borderRadius: 39,
+  shutterButton: {
+    width: 66,
+    height: 66,
+    backgroundColor: '#ffffff',
+    borderRadius: 33,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  shutterDot: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 3,
-    borderColor: '#050505',
-    opacity: 0.6,
+  shutterInnerDot: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#000000',
+    opacity: 0.3,
   },
 });

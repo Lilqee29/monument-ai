@@ -302,7 +302,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#000000',
   },
   fallbackContainer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: '#000000',
     alignItems: 'center',
     justifyContent: 'center',
@@ -359,7 +359,7 @@ const styles = StyleSheet.create({
   },
   overlay: {
     flex: 1,
-    justify: 'space-between',
+    justifyContent: 'space-between',
     paddingHorizontal: 24,
   },
   topRow: {

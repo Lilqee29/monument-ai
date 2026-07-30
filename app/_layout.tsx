@@ -3,7 +3,9 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
-import 'react-native-reanimated';
+// react-native-reanimated removed from root layout — native module init
+// crashes on sideloaded builds when app cold-starts from OAuth redirect.
+// Components that need Reanimated import it directly.
 import * as WebBrowser from 'expo-web-browser';
 import { 
   useFonts, 

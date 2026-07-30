@@ -142,7 +142,54 @@ interface OpenRouterMessage {
   content: string | OpenRouterContentPart[];
 }
 
-// ─── Core fetch — single model call ──────────────────────────────────────────
+// ─── Retry helper with exponential backoff ───────────────────────────────────
+const MAX_RETRIES = 2;
+const BASE_DELAY_MS = 1000;
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryable(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  // 429 rate limit, 500-503 server errors, network timeouts
+  if (/429|rate.?limit/i.test(msg)) return true;
+  if (/50[0-3]/.test(msg)) return true;
+  if (/timeout|network|fetch.*fail/i.test(msg)) return true;
+  return false;
+}
+
+// ─── Request Queue ───────────────────────────────────────────────────────────
+// Serializes AI requests to avoid blowing rate limits (Gemini 15 RPM free tier).
+// Each request is retried with backoff before falling back to next provider.
+
+type QueueTask = { fn: () => Promise<string>; resolve: (v: string) => void; reject: (e: Error) => void };
+const queue: QueueTask[] = [];
+let processing = false;
+
+async function enqueue(task: () => Promise<string>): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    queue.push({ fn: task, resolve, reject });
+    processQueue();
+  });
+}
+
+async function processQueue(): Promise<void> {
+  if (processing) return;
+  processing = true;
+  while (queue.length > 0) {
+    const task = queue.shift()!;
+    try {
+      const result = await task.fn();
+      task.resolve(result);
+    } catch (err: any) {
+      task.reject(err);
+    }
+  }
+  processing = false;
+}
+
+// ─── Core fetch — single model call with retry ───────────────────────────────
 
 async function fetchModel(
   model: string,
@@ -151,35 +198,56 @@ async function fetchModel(
   jsonMode: boolean,
   signal?: AbortSignal,
 ): Promise<string> {
-  const body: Record<string, unknown> = {
-    model,
-    messages,
-    max_tokens: maxTokens,
-    temperature: 0.7,
-  };
-  if (jsonMode) body.response_format = { type: 'json_object' };
+  let lastErr: Error | null = null;
 
-  const response = await fetch(OPENROUTER_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-      'HTTP-Referer': 'https://relica.expo.app',
-      'X-Title': 'RELICA',
-    },
-    body: JSON.stringify(body),
-    signal,
-  });
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
+      console.log(`[RELICA] Retry ${attempt}/${MAX_RETRIES} for ${model} in ${delay}ms`);
+      await sleep(delay);
+    }
 
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    try {
+      const body: Record<string, unknown> = {
+        model,
+        messages,
+        max_tokens: maxTokens,
+        temperature: 0.7,
+      };
+      if (jsonMode) body.response_format = { type: 'json_object' };
 
-  const data = await response.json();
-  if (data.error) throw new Error(data.error.message);
+      const response = await fetch(OPENROUTER_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+          'HTTP-Referer': 'https://relica.expo.app',
+          'X-Title': 'RELICA',
+        },
+        body: JSON.stringify(body),
+        signal,
+      });
 
-  const content: string | undefined = data.choices?.[0]?.message?.content;
-  if (!content?.trim()) throw new Error('Empty response');
+      if (!response.ok) {
+        const errBody = await response.text().catch(() => '');
+        throw new Error(`HTTP ${response.status}: ${errBody.slice(0, 200)}`);
+      }
 
-  return content;
+      const data = await response.json();
+      if (data.error) throw new Error(data.error.message || 'OpenRouter error');
+
+      const content: string | undefined = data.choices?.[0]?.message?.content;
+      if (!content?.trim()) throw new Error('Empty response');
+
+      return content;
+    } catch (err: any) {
+      lastErr = err instanceof Error ? err : new Error(String(err));
+      if (signal?.aborted) throw lastErr;
+      if (!isRetryable(err)) throw lastErr;
+    }
+  }
+
+  throw lastErr || new Error(`Failed after ${MAX_RETRIES + 1} attempts`);
 }
 
 // ─── Gemini fetch — primary provider ────────────────────────────────────────
@@ -202,75 +270,91 @@ async function fetchGemini(
 ): Promise<string> {
   if (!GEMINI_API_KEY) throw new Error('No Gemini API key');
 
-  // Convert OpenRouter messages → Gemini format
-  // Gemini uses 'model' instead of 'assistant', and systemInstruction is separate
-  let systemPrompt = '';
-  const contents: GeminiContent[] = [];
+  let lastErr: Error | null = null;
 
-  for (const msg of messages) {
-    if (msg.role === 'system') {
-      systemPrompt += (systemPrompt ? '\n' : '') + msg.content;
-    } else {
-      const parts: GeminiPart[] = [];
-      if (typeof msg.content === 'string') {
-        parts.push({ text: msg.content });
-      } else {
-        for (const part of msg.content) {
-          if (part.type === 'text') {
-            parts.push({ text: part.text });
-          } else if (part.type === 'image_url') {
-            // Extract base64 data from data URL
-            const match = part.image_url.url.match(/^data:([^;]+);base64,(.+)$/);
-            if (match) {
-              parts.push({ inlineData: { mimeType: match[1], data: match[2] } });
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
+      console.log(`[RELICA] Gemini retry ${attempt}/${MAX_RETRIES} in ${delay}ms`);
+      await sleep(delay);
+    }
+
+    try {
+      // Convert OpenRouter messages → Gemini format
+      let systemPrompt = '';
+      const contents: GeminiContent[] = [];
+
+      for (const msg of messages) {
+        if (msg.role === 'system') {
+          systemPrompt += (systemPrompt ? '\n' : '') + msg.content;
+        } else {
+          const parts: GeminiPart[] = [];
+          if (typeof msg.content === 'string') {
+            parts.push({ text: msg.content });
+          } else {
+            for (const part of msg.content) {
+              if (part.type === 'text') {
+                parts.push({ text: part.text });
+              } else if (part.type === 'image_url') {
+                const match = part.image_url.url.match(/^data:([^;]+);base64,(.+)$/);
+                if (match) {
+                  parts.push({ inlineData: { mimeType: match[1], data: match[2] } });
+                }
+              }
             }
           }
+          contents.push({
+            role: msg.role === 'assistant' ? 'model' : 'user',
+            parts,
+          });
         }
       }
-      contents.push({
-        role: msg.role === 'assistant' ? 'model' : 'user',
-        parts,
+
+      const body: Record<string, unknown> = {
+        contents,
+        generationConfig: {
+          maxOutputTokens: maxTokens,
+          temperature: 0.7,
+        },
+      };
+
+      if (systemPrompt) {
+        body.systemInstruction = { parts: [{ text: systemPrompt }] };
+      }
+      if (jsonMode) {
+        (body.generationConfig as Record<string, unknown>).responseMimeType = 'application/json';
+      }
+
+      const url = `${GEMINI_API_URL}/${GEMINI_MODEL}:generateContent`;
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': GEMINI_API_KEY,
+        },
+        body: JSON.stringify(body),
+        signal,
       });
+
+      if (!response.ok) {
+        const err = await response.text().catch(() => '');
+        throw new Error(`Gemini HTTP ${response.status}: ${err.slice(0, 200)}`);
+      }
+
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text?.trim()) throw new Error('Gemini empty response');
+
+      return text;
+    } catch (err: any) {
+      lastErr = err instanceof Error ? err : new Error(String(err));
+      if (signal?.aborted) throw lastErr;
+      if (!isRetryable(err)) throw lastErr;
     }
   }
 
-  const body: Record<string, unknown> = {
-    contents,
-    generationConfig: {
-      maxOutputTokens: maxTokens,
-      temperature: 0.7,
-    },
-  };
-
-  if (systemPrompt) {
-    body.systemInstruction = { parts: [{ text: systemPrompt }] };
-  }
-  if (jsonMode) {
-    (body.generationConfig as Record<string, unknown>).responseMimeType = 'application/json';
-  }
-
-  const url = `${GEMINI_API_URL}/${GEMINI_MODEL}:generateContent`;
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': GEMINI_API_KEY,
-    },
-    body: JSON.stringify(body),
-    signal,
-  });
-
-  if (!response.ok) {
-    const err = await response.text().catch(() => '');
-    throw new Error(`Gemini HTTP ${response.status}: ${err.slice(0, 200)}`);
-  }
-
-  const data = await response.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text?.trim()) throw new Error('Gemini empty response');
-
-  return text;
+  throw lastErr || new Error(`Gemini failed after ${MAX_RETRIES + 1} attempts`);
 }
 
 // ─── RACE strategy: fire top N models simultaneously, take the first winner ───
@@ -294,16 +378,14 @@ async function callOpenRouter(
     }
   }
 
-  // 2. Race the top N models — first valid response wins
+  // 2. Race the top N models — first valid response wins (each has built-in retry)
   const controllers = models.slice(0, raceCount).map(() => new AbortController());
 
   const racePromises = models.slice(0, raceCount).map((model, i) =>
     fetchModel(model, messages, maxTokens, jsonMode, controllers[i].signal)
       .then(content => {
         console.log(`[RELICA] ✓ Race winner: ${model}`);
-        // Cancel all other in-flight requests
         controllers.forEach((c, j) => { if (j !== i) c.abort(); });
-        // Cache the winner
         responseCache.set(getCacheKey(model, messages), content);
         evictIfNeeded();
         return content;
@@ -311,10 +393,9 @@ async function callOpenRouter(
   );
 
   try {
-    // Promise.any = resolves with FIRST success, ignores individual failures
     return await Promise.any(racePromises);
   } catch {
-    // All top-N failed — fall back to remaining models sequentially
+    // All top-N failed — fall back to remaining models sequentially (each with retry)
     console.warn(`[RELICA] Race failed, trying fallback models...`);
     for (const model of models.slice(raceCount)) {
       try {
@@ -331,10 +412,10 @@ async function callOpenRouter(
   }
 }
 
-// ─── Unified callAI — Gemini first, OpenRouter fallback ─────────────────────
+// ─── Unified callAI — queued, Gemini first, OpenRouter fallback ────────────
 //
-// Every public function should use this. Gemini is tried first (faster, better 
-// JSON, free tier). If Gemini fails or no key, falls back to OpenRouter race.
+// All requests go through the queue to avoid rate-limit blowups (Gemini 15 RPM).
+// Each provider has built-in retry with exponential backoff.
 
 async function callAI(
   messages: OpenRouterMessage[],
@@ -345,31 +426,33 @@ async function callAI(
     raceCount?: number;
   } = {},
 ): Promise<string> {
-  const { jsonMode = false, maxTokens = 800, vision = false, raceCount = 3 } = options;
+  return enqueue(async () => {
+    const { jsonMode = false, maxTokens = 800, vision = false, raceCount = 3 } = options;
 
-  // 1. Try Gemini first (if key is configured)
-  if (GEMINI_API_KEY) {
-    const cacheKey = `gemini::${JSON.stringify(messages)}`;
-    const cached = responseCache.get(cacheKey);
-    if (cached) {
-      console.log('[RELICA] ✓ Gemini cache hit');
-      return cached;
+    // 1. Try Gemini first (if key is configured) — with retry built into fetchGemini
+    if (GEMINI_API_KEY) {
+      const cacheKey = `gemini::${JSON.stringify(messages)}`;
+      const cached = responseCache.get(cacheKey);
+      if (cached) {
+        console.log('[RELICA] ✓ Gemini cache hit');
+        return cached;
+      }
+
+      try {
+        const content = await fetchGemini(messages, maxTokens, jsonMode);
+        responseCache.set(cacheKey, content);
+        evictIfNeeded();
+        console.log('[RELICA] ✓ Gemini winner');
+        return content;
+      } catch (err: any) {
+        console.warn(`[RELICA] Gemini failed: ${err.message} — falling back to OpenRouter`);
+      }
     }
 
-    try {
-      const content = await fetchGemini(messages, maxTokens, jsonMode);
-      responseCache.set(cacheKey, content);
-      evictIfNeeded();
-      console.log('[RELICA] ✓ Gemini winner');
-      return content;
-    } catch (err: any) {
-      console.warn(`[RELICA] Gemini failed: ${err.message} — falling back to OpenRouter`);
-    }
-  }
-
-  // 2. Fallback to OpenRouter race
-  const models = vision ? VISION_MODELS : TEXT_MODELS;
-  return callOpenRouter(models, messages, jsonMode, maxTokens, raceCount);
+    // 2. Fallback to OpenRouter race (each model has retry built in)
+    const models = vision ? VISION_MODELS : TEXT_MODELS;
+    return callOpenRouter(models, messages, jsonMode, maxTokens, raceCount);
+  });
 }
 
 // ─── JSON Extraction Helper ───────────────────────────────────────────────────

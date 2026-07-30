@@ -1,22 +1,26 @@
 /**
- * LiquidGlassTabBar — Custom bottom tab bar matching the liquid glass reference.
+ * LiquidGlassTabBar — Custom floating pill with real iOS 26 Liquid Glass.
  *
- * Layout: [  Gallery | Map | Quest | Leaderboard  ]   (Camera)
- *          └──────── pill (4 tabs) ──────────┘     circle
+ * Follows Apple HIG:
+ *   - 44pt minimum touch targets (we use 48pt)
+ *   - 25pt SF Symbol icons
+ *   - UIGlassEffect .regular on iOS 26+
+ *   - Solid dark fallback on older platforms
  *
- * - iOS 26+: native liquid glass via UIBlurEffectStyleSystemChromeMaterial
- * - iOS < 26: expo-blur BlurView with translucent dark background
- * - Android: translucent dark background with slight blur
+ * Layout:   [  Gallery | Map | Quest | Leaderboard  ]   (Camera)
+ * Expanded:                                           ( ← )
  */
-import React from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   TouchableOpacity,
   StyleSheet,
   Platform,
+  Animated,
+  Easing,
   Dimensions,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
+import { LiquidGlassView, isLiquidGlassSupported } from '@callstack/liquid-glass';
 import * as Haptics from 'expo-haptics';
 import {
   Camera,
@@ -24,44 +28,34 @@ import {
   Map,
   Swords,
   Trophy,
-  User,
+  ChevronLeft,
 } from 'lucide-react-native';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// ─── Tab config (order matters — left to right inside pill) ─────────
+// ─── Tab config ──────────────────────────────────────────────────────
 interface TabItem {
   key: string;
   label: string;
   icon: React.ComponentType<{ size: number; color: string }>;
-  /** If true, renders as separate circle outside the pill */
-  isPrimary?: boolean;
 }
 
-const TABS: TabItem[] = [
+const PILL_TABS: TabItem[] = [
   { key: 'gallery', label: 'Gallery', icon: ImageIcon },
   { key: 'map', label: 'Map', icon: Map },
   { key: 'quest', label: 'Quest', icon: Swords },
   { key: 'leaderboard', label: 'Leaderboard', icon: Trophy },
-  { key: 'profile', label: 'Profile', icon: User },
-  { key: 'index', label: 'Camera', icon: Camera, isPrimary: true },
 ];
 
-// ─── Platform constants ─────────────────────────────────────────────
-const PILL_HEIGHT = 64;
-const PILL_RADIUS = 32;
-const CIRCLE_SIZE = 56;
+// ─── Apple HIG dimensions ────────────────────────────────────────────
+const PILL_HEIGHT = 56;           // generous but not bloated
+const PILL_RADIUS = 28;           // fully rounded ends (height/2)
+const CIRCLE_SIZE = 52;           // slightly smaller than pill
+const ICON_SIZE = 24;             // Apple HIG standard SF Symbol size
+const TAB_MIN_TOUCH = 48;         // Apple HIG minimum touch target
 const TAB_BAR_BOTTOM = Platform.OS === 'ios' ? 28 : 16;
-const TAB_GAP = 4;
-
-// ─── Detect iOS 26+ liquid glass availability ───────────────────────
-function supportsLiquidGlass(): boolean {
-  if (Platform.OS !== 'ios') return false;
-  const majorVersion = typeof Platform.Version === 'number'
-    ? Platform.Version
-    : parseInt(String(Platform.Version), 10);
-  return majorVersion >= 26;
-}
+const GAP = 10;                   // gap between pill and circle
+const ANIM_DURATION = 250;
 
 // ─── Props ──────────────────────────────────────────────────────────
 interface LiquidGlassTabBarProps {
@@ -70,98 +64,134 @@ interface LiquidGlassTabBarProps {
   navigation: any;
 }
 
-export function LiquidGlassTabBar({ state, descriptors, navigation }: LiquidGlassTabBarProps) {
-  const isLiquidGlass = supportsLiquidGlass();
+// Glass wrapper: LiquidGlassView on iOS 26+, solid fallback otherwise
+function GlassWrapper({ children, style }: { children: React.ReactNode; style?: any }) {
+  if (isLiquidGlassSupported) {
+    return (
+      <LiquidGlassView
+        effect="regular"
+        interactive={false}
+        colorScheme="dark"
+        style={style}
+      >
+        {children}
+      </LiquidGlassView>
+    );
+  }
+  return <View style={[style, styles.solidFallback]}>{children}</View>;
+}
 
-  // Map expo-router state routes to our tab config
+export function LiquidGlassTabBar({ state, descriptors, navigation }: LiquidGlassTabBarProps) {
+  const [expanded, setExpanded] = useState(false);
+  const pillOpacity = useRef(new Animated.Value(1)).current;
+  const pillScale = useRef(new Animated.Value(1)).current;
+
   const routes = state.routes;
 
-  // Separate primary (camera) from pill tabs
-  const pillTabs = TABS.filter(t => !t.isPrimary);
-  const primaryTab = TABS.find(t => t.isPrimary);
+  const animatePill = (toOpacity: number, toScale: number) => {
+    Animated.parallel([
+      Animated.timing(pillOpacity, {
+        toValue: toOpacity,
+        duration: ANIM_DURATION,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(pillScale, {
+        toValue: toScale,
+        duration: ANIM_DURATION,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  const handleCameraPress = useCallback(() => {
+    if (process.env.EXPO_OS === 'ios') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    setExpanded(true);
+    animatePill(0, 0.9);
+    navigation.navigate('index');
+  }, [navigation]);
+
+  const handleBackPress = useCallback(() => {
+    if (process.env.EXPO_OS === 'ios') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setExpanded(false);
+    animatePill(1, 1);
+    navigation.navigate('gallery');
+  }, [navigation]);
+
+  const handleTabPress = useCallback(
+    (tabKey: string) => {
+      if (process.env.EXPO_OS === 'ios') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+      navigation.navigate(tabKey);
+    },
+    [navigation]
+  );
 
   return (
     <View style={styles.container} pointerEvents="box-none">
-      <View style={styles.row}>
-        {/* ─── Pill bar (4 tabs) ────────────────────────── */}
-        <View style={styles.pillWrapper}>
-          <BlurView
-            intensity={isLiquidGlass ? 80 : 60}
-            tint="dark"
-            style={styles.pillBlur}
-          >
-            <View style={styles.pillInner}>
-              {pillTabs.map((tab) => {
-                const routeIndex = routes.findIndex((r: any) => r.name === tab.key);
-                const isFocused = state.index === routeIndex;
-                const color = isFocused ? '#ffffff' : 'rgba(255,255,255,0.5)';
+      {/* ─── Pill (liquid glass) ──── */}
+      <Animated.View
+        style={[
+          styles.pillAnimated,
+          { opacity: pillOpacity, transform: [{ scale: pillScale }] },
+        ]}
+        pointerEvents={expanded ? 'none' : 'auto'}
+      >
+        <GlassWrapper style={styles.pillGlass}>
+          <View style={styles.pillInner}>
+            {PILL_TABS.map((tab) => {
+              const routeIndex = routes.findIndex((r: any) => r.name === tab.key);
+              const isFocused = state.index === routeIndex;
+              const color = isFocused ? '#ffffff' : 'rgba(255,255,255,0.5)';
 
-                const onPress = () => {
-                  if (process.env.EXPO_OS === 'ios') {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }
-                  if (!isFocused) {
-                    navigation.navigate(tab.key);
-                  }
-                };
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  onPress={() => handleTabPress(tab.key)}
+                  activeOpacity={0.7}
+                  style={[
+                    styles.tabItem,
+                    isFocused && styles.tabItemActive,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={tab.label}
+                  accessibilityState={{ selected: isFocused }}
+                >
+                  <tab.icon size={ICON_SIZE} color={color} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </GlassWrapper>
+      </Animated.View>
 
-                const IconComponent = tab.icon;
-
-                return (
-                  <TouchableOpacity
-                    key={tab.key}
-                    onPress={onPress}
-                    activeOpacity={0.7}
-                    style={[
-                      styles.tabItem,
-                      isFocused && styles.tabItemActive,
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityLabel={tab.label}
-                    accessibilityState={{ selected: isFocused }}
-                  >
-                    <IconComponent size={22} color={color} />
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </BlurView>
-        </View>
-
-        {/* ─── Camera circle (separate, primary action) ──── */}
-        {primaryTab && (() => {
-          const routeIndex = routes.findIndex((r: any) => r.name === primaryTab.key);
-          const isFocused = state.index === routeIndex;
-          const color = isFocused ? '#c9a84c' : '#ffffff';
-
-          const onPress = () => {
-            if (process.env.EXPO_OS === 'ios') {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            }
-            if (!isFocused) {
-              navigation.navigate(primaryTab.key);
-            }
-          };
-
-          const IconComponent = primaryTab.icon;
-
-          return (
-            <TouchableOpacity
-              onPress={onPress}
-              activeOpacity={0.7}
-              style={[
-                styles.circleButton,
-                isFocused && styles.circleButtonActive,
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel={primaryTab.label}
-              accessibilityState={{ selected: isFocused }}
-            >
-              <IconComponent size={26} color={color} />
-            </TouchableOpacity>
-          );
-        })()}
-      </View>
+      {/* ─── Circle (camera / back) ──── */}
+      <GlassWrapper
+        style={[
+          styles.circleGlass,
+          expanded ? styles.circleActive : styles.circleDefault,
+        ]}
+      >
+        <TouchableOpacity
+          onPress={expanded ? handleBackPress : handleCameraPress}
+          activeOpacity={0.7}
+          style={styles.circleButton}
+          accessibilityRole="button"
+          accessibilityLabel={expanded ? 'Back' : 'Camera'}
+        >
+          {expanded ? (
+            <ChevronLeft size={ICON_SIZE} color="#ffffff" />
+          ) : (
+            <Camera size={ICON_SIZE} color="#ffffff" />
+          )}
+        </TouchableOpacity>
+      </GlassWrapper>
     </View>
   );
 }
@@ -173,62 +203,61 @@ const styles = StyleSheet.create({
     bottom: TAB_BAR_BOTTOM,
     left: 0,
     right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    gap: GAP,
+    paddingHorizontal: 20,
     zIndex: 100,
   },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
 
-  // ── Pill (4 tabs) ──
-  pillWrapper: {
+  // ── Pill ──
+  pillAnimated: {
+    flex: 1,
+    maxWidth: SCREEN_WIDTH * 0.72,
+  },
+  pillGlass: {
     borderRadius: PILL_RADIUS,
     overflow: 'hidden',
-    // Subtle border for the glass edge
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.15)',
-  },
-  pillBlur: {
-    borderRadius: PILL_RADIUS,
-    backgroundColor: Platform.OS === 'android' ? 'rgba(20,20,20,0.85)' : undefined,
   },
   pillInner: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-evenly',
     height: PILL_HEIGHT,
-    paddingHorizontal: 6,
-    gap: TAB_GAP,
   },
-
-  // ── Individual tab inside pill ──
   tabItem: {
-    height: 44,
-    borderRadius: 22,
+    height: TAB_MIN_TOUCH,
+    width: TAB_MIN_TOUCH,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 14,
+    borderRadius: TAB_MIN_TOUCH / 2,
   },
   tabItemActive: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.18)',
   },
 
-  // ── Camera circle (separate) ──
+  // ── Circle ──
+  circleGlass: {
+    width: CIRCLE_SIZE,
+    height: CIRCLE_SIZE,
+    borderRadius: CIRCLE_SIZE / 2,
+    overflow: 'hidden',
+  },
+  circleDefault: {},
+  circleActive: {},
   circleButton: {
     width: CIRCLE_SIZE,
     height: CIRCLE_SIZE,
     borderRadius: CIRCLE_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    // Glass border
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.2)',
-    backgroundColor: 'rgba(30,30,30,0.7)',
   },
-  circleButtonActive: {
-    backgroundColor: 'rgba(201,168,76,0.2)',
-    borderColor: 'rgba(201,168,76,0.4)',
+
+  // ── Fallback (pre-iOS 26 / Android) ──
+  solidFallback: {
+    backgroundColor: 'rgba(30,30,30,0.88)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.12)',
   },
 });

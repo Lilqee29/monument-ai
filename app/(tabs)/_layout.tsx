@@ -1,11 +1,12 @@
-import { Tabs } from 'expo-router';
+/**
+ * Tab Layout — Custom floating pill tab bar with camera expand/collapse.
+ */
 import React from 'react';
+import { Tabs } from 'expo-router';
 import { LiquidGlassTabBar } from '@/components/LiquidGlassTabBar';
 import { useLanguage } from '@/lib/languageContext';
-import { breadcrumb } from '@/lib/crashDebug';
 
 export default function TabLayout() {
-  breadcrumb('T01', 'TabLayout render');
   const { t } = useLanguage();
 
   return (
@@ -14,7 +15,6 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
       }}>
-      {/* Order here doesn't determine visual order — LiquidGlassTabBar handles that */}
       <Tabs.Screen
         name="index"
         options={{
@@ -55,6 +55,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="profile"
         options={{
+          href: null,
           title: t('profile'),
         }}
       />

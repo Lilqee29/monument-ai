@@ -1,9 +1,10 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+// ThemeProvider from @react-navigation/native removed — SDK 56+ expo-router handles nav theming internally
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import 'react-native-reanimated';
+import * as WebBrowser from 'expo-web-browser';
 import { 
   useFonts, 
   PlayfairDisplay_400Regular,
@@ -165,45 +166,43 @@ function RootLayoutNav() {
   const { colorScheme } = useColorScheme();
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <View className={`flex-1 ${colorScheme === 'dark' ? 'dark' : ''}`}>
-        <AuthRedirectHandler />
-        <Stack>
-          <Stack.Screen name="index" options={{ headerShown: false }} />
-          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-          <Stack.Screen name="result" options={{ 
-            title: 'Result', 
-            presentation: 'modal',
-            headerShown: false 
-          }} />
-          <Stack.Screen name="session/[id]" options={{ title: 'Session Details', headerShown: false }} />
-          <Stack.Screen name="settings" options={{ 
-            title: 'Settings', 
-            presentation: 'modal',
-            headerShown: false 
-          }} />
-          <Stack.Screen name="collection" options={{ 
-            headerShown: false,
-            animation: 'slide_from_right'
-          }} />
-          <Stack.Screen name="worldmap" options={{ 
-            headerShown: false,
-            animation: 'slide_from_bottom'
-          }} />
-          <Stack.Screen name="quiz" options={{ 
-            headerShown: false,
-            animation: 'fade'
-          }} />
-          <Stack.Screen name="leaderboard" options={{ 
-            headerShown: false,
-            animation: 'slide_from_right'
-          }} />
-        </Stack>
-        <StatusBar style={colorScheme === 'dark' ? "light" : "dark"} />
-      </View>
-    </ThemeProvider>
+    <View className={`flex-1 ${colorScheme === 'dark' ? 'dark' : ''}`}>
+      <AuthRedirectHandler />
+      <Stack>
+        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+        <Stack.Screen name="result" options={{ 
+          title: 'Result', 
+          presentation: 'modal',
+          headerShown: false 
+        }} />
+        <Stack.Screen name="session/[id]" options={{ title: 'Session Details', headerShown: false }} />
+        <Stack.Screen name="settings" options={{ 
+          title: 'Settings', 
+          presentation: 'modal',
+          headerShown: false 
+        }} />
+        <Stack.Screen name="collection" options={{ 
+          headerShown: false,
+          animation: 'slide_from_right'
+        }} />
+        <Stack.Screen name="worldmap" options={{ 
+          headerShown: false,
+          animation: 'slide_from_bottom'
+        }} />
+        <Stack.Screen name="quiz" options={{ 
+          headerShown: false,
+          animation: 'fade'
+        }} />
+        <Stack.Screen name="leaderboard" options={{ 
+          headerShown: false,
+          animation: 'slide_from_right'
+        }} />
+      </Stack>
+      <StatusBar style={colorScheme === 'dark' ? "light" : "dark"} />
+    </View>
   );
 }
 
@@ -221,8 +220,11 @@ export default function RootLayout() {
   const [lastCrashFile, setLastCrashFile] = useState<string>('');
   const [showDebugScreen, setShowDebugScreen] = useState(false);
 
-  // On mount: read previous session crash file + breadcrumbs + enable storage
+  // On mount: complete any pending OAuth session + read crash file + breadcrumbs
   useEffect(() => {
+    // Must fire on cold start (app opened by OAuth redirect URL scheme)
+    WebBrowser.maybeCompleteAuthSession();
+
     enableBreadcrumbStorage();
     installGlobalErrorHandlers(); // no-op now but kept for safety
 

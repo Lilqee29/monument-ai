@@ -85,16 +85,17 @@ export const DEMO_MAP_MARKERS = WORLD_LANDMARKS.map((lm) => ({
 }));
 
 // ── Helper: check if running in demo mode ────────────────────────────────────
+// In-memory store — AsyncStorage native module unavailable on sideloaded builds
+const demoMemStore = new Map<string, string>();
 const DEMO_KEY = '@relica_demo_mode';
 
 export async function getDemoMode(): Promise<boolean> {
   try {
-    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
-    const val = await AsyncStorage.getItem(DEMO_KEY);
-    if (val === null) {
-      // Default to DEMO MODE enabled on initial install/sideload
-      await AsyncStorage.setItem(DEMO_KEY, 'true');
-      return true;
+    const val = demoMemStore.get(DEMO_KEY);
+    if (val === undefined) {
+      // Default to normal mode on initial install/sideload
+      demoMemStore.set(DEMO_KEY, 'false');
+      return false;
     }
     return val === 'true';
   } catch {
@@ -104,8 +105,7 @@ export async function getDemoMode(): Promise<boolean> {
 
 export async function setDemoMode(enabled: boolean): Promise<void> {
   try {
-    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
-    await AsyncStorage.setItem(DEMO_KEY, enabled ? 'true' : 'false');
+    demoMemStore.set(DEMO_KEY, enabled ? 'true' : 'false');
   } catch {
     // silent fail
   }

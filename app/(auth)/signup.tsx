@@ -1,11 +1,9 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator, ImageBackground, Dimensions, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { useSignUp, useOAuth } from '@clerk/clerk-expo';
 import { useRouter, Link } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
 import * as WebBrowser from 'expo-web-browser';
-
-WebBrowser.maybeCompleteAuthSession();
 
 const { width, height } = Dimensions.get('window');
 
@@ -18,29 +16,21 @@ export default function SignUpScreen() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  let startGoogleFlow: any = null;
-  let startAppleFlow: any = null;
-  try {
-    const googleRes = useOAuth({ strategy: "oauth_google" });
-    startGoogleFlow = googleRes.startOAuthFlow;
-  } catch (e) {
-    console.warn("[SignUpScreen] Google OAuth hook warning:", e);
-  }
+  // ── useOAuth hooks MUST be at top level — no try/catch around hooks ──
+  const { startOAuthFlow: startGoogleFlow } = useOAuth({ strategy: 'oauth_google' });
+  const { startOAuthFlow: startAppleFlow } = useOAuth({ strategy: 'oauth_apple' });
 
-  try {
-    const appleRes = useOAuth({ strategy: "oauth_apple" });
-    startAppleFlow = appleRes.startOAuthFlow;
-  } catch (e) {
-    console.warn("[SignUpScreen] Apple OAuth hook warning:", e);
-  }
+  const isAuthenticating = useRef(false);
 
   const onSelectAuth = async (strategy: 'oauth_google' | 'oauth_apple') => {
+    if (isAuthenticating.current) return;
     const selectedAuth = strategy === 'oauth_google' ? startGoogleFlow : startAppleFlow;
     if (!selectedAuth) {
       Alert.alert('OAuth Unavailable', 'Social login is not available on this sideloaded build. Please use Demo Mode.');
       return;
     }
 
+    isAuthenticating.current = true;
     try {
       const { createdSessionId, setActive: setOAuthActive } = await selectedAuth();
 
@@ -48,9 +38,14 @@ export default function SignUpScreen() {
         setOAuthActive!({ session: createdSessionId });
         router.replace('/(tabs)');
       }
-    } catch (err) {
-      console.error("OAuth error", err);
-      Alert.alert('OAuth Error', 'Social login failed. Try Demo Mode.');
+    } catch (err: any) {
+      const msg = err?.message || '';
+      if (!msg.includes('already open') && !msg.includes('UserCancel')) {
+        console.error('OAuth error', err);
+        Alert.alert('OAuth Error', 'Social login failed. Try Demo Mode.');
+      }
+    } finally {
+      isAuthenticating.current = false;
     }
   };
 

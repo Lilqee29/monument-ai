@@ -1,11 +1,13 @@
 /**
  * Streak System — tracks daily exploration streaks.
- * Uses AsyncStorage to persist across app sessions.
+ * Uses an in-memory Map as storage — AsyncStorage native module is
+ * unavailable on sideloaded / dev-client builds without native linking.
  */
-import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// ── In-memory store (replaces AsyncStorage) ─────────────────────────
+const memStore = new Map<string, string>();
 
 const STREAK_KEY = '@monument_streak';
-const LAST_SCAN_KEY = '@monument_last_scan';
 
 export interface StreakData {
   currentStreak: number;
@@ -26,7 +28,7 @@ function yesterdayISO(): string {
 
 export async function getStreak(): Promise<StreakData> {
   try {
-    const raw = await AsyncStorage.getItem(STREAK_KEY);
+    const raw = memStore.get(STREAK_KEY);
     if (!raw) return { currentStreak: 0, longestStreak: 0, lastScanDate: null, totalDays: 0 };
     return JSON.parse(raw) as StreakData;
   } catch {
@@ -64,7 +66,7 @@ export async function recordScan(): Promise<{ streak: StreakData; isNewDay: bool
   streak.totalDays += 1;
   streak.longestStreak = Math.max(streak.longestStreak, streak.currentStreak);
 
-  await AsyncStorage.setItem(STREAK_KEY, JSON.stringify(streak));
+  memStore.set(STREAK_KEY, JSON.stringify(streak));
   return { streak, isNewDay, xpMultiplier: getXPMultiplier(streak.currentStreak) };
 }
 
@@ -99,5 +101,5 @@ export function getStreakTitle(streakDays: number): string {
 }
 
 export async function resetStreak(): Promise<void> {
-  await AsyncStorage.removeItem(STREAK_KEY);
+  memStore.delete(STREAK_KEY);
 }

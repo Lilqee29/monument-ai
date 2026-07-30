@@ -1,16 +1,18 @@
 /**
- * LiquidGlassTabBar — Custom floating pill with real iOS 26 Liquid Glass.
+ * LiquidGlassTabBar — Custom floating pill with sliding tab indicator.
  *
- * Follows Apple HIG:
- *   - 44pt minimum touch targets (we use 48pt)
- *   - 25pt SF Symbol icons
- *   - UIGlassEffect .regular on iOS 26+
- *   - Solid dark fallback on older platforms
+ * Pure React Native Animated — no native modules, no crashes on sideload.
+ * Sliding highlight gives a liquid/glass feel of fluid motion between tabs.
  *
- * Layout:   [  Gallery | Map | Quest | Leaderboard  ]   (Camera)
- * Expanded:                                           ( ← )
+ * Apple HIG:
+ *   - 48pt minimum touch targets
+ *   - 24pt SF Symbol icons
+ *   - Dark translucent material (no native glass on sideload)
+ *
+ * Layout:   [ ◉ Gallery | ◎ Map | ◎ Quest | ◎ Leaderboard ]   (Camera)
+ * Slider moves smoothly between active tabs with spring animation.
  */
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   TouchableOpacity,
@@ -19,8 +21,8 @@ import {
   Animated,
   Easing,
   Dimensions,
+  LayoutChangeEvent,
 } from 'react-native';
-import { LiquidGlassView, isLiquidGlassSupported } from '@callstack/liquid-glass';
 import * as Haptics from 'expo-haptics';
 import {
   Camera,
@@ -48,14 +50,15 @@ const PILL_TABS: TabItem[] = [
 ];
 
 // ─── Apple HIG dimensions ────────────────────────────────────────────
-const PILL_HEIGHT = 56;           // generous but not bloated
-const PILL_RADIUS = 28;           // fully rounded ends (height/2)
-const CIRCLE_SIZE = 52;           // slightly smaller than pill
-const ICON_SIZE = 24;             // Apple HIG standard SF Symbol size
-const TAB_MIN_TOUCH = 48;         // Apple HIG minimum touch target
+const PILL_HEIGHT = 56;
+const PILL_RADIUS = 28;
+const CIRCLE_SIZE = 56;
+const ICON_SIZE = 24;
+const TAB_MIN_TOUCH = 48;
 const TAB_BAR_BOTTOM = Platform.OS === 'ios' ? 28 : 16;
-const GAP = 10;                   // gap between pill and circle
-const ANIM_DURATION = 250;
+const GAP = 10;
+const INDICATOR_HEIGHT = 40;
+const INDICATOR_RADIUS = 20;
 
 // ─── Props ──────────────────────────────────────────────────────────
 interface LiquidGlassTabBarProps {
@@ -64,41 +67,46 @@ interface LiquidGlassTabBarProps {
   navigation: any;
 }
 
-// Glass wrapper: LiquidGlassView on iOS 26+, solid fallback otherwise
-function GlassWrapper({ children, style }: { children: React.ReactNode; style?: any }) {
-  if (isLiquidGlassSupported) {
-    return (
-      <LiquidGlassView
-        effect="regular"
-        interactive={false}
-        colorScheme="dark"
-        style={style}
-      >
-        {children}
-      </LiquidGlassView>
-    );
-  }
-  return <View style={[style, styles.solidFallback]}>{children}</View>;
-}
-
 export function LiquidGlassTabBar({ state, descriptors, navigation }: LiquidGlassTabBarProps) {
   const [expanded, setExpanded] = useState(false);
+  const [pillWidth, setPillWidth] = useState(SCREEN_WIDTH * 0.72);
   const pillOpacity = useRef(new Animated.Value(1)).current;
   const pillScale = useRef(new Animated.Value(1)).current;
+  const slideX = useRef(new Animated.Value(0)).current;
 
   const routes = state.routes;
+  const activeIndex = Math.max(
+    0,
+    PILL_TABS.findIndex((t) => {
+      const idx = routes.findIndex((r: any) => r.name === t.key);
+      return idx === state.index;
+    })
+  );
+  const tabWidth = pillWidth / PILL_TABS.length;
+
+  // ── Slide the indicator to the active tab ──
+  useEffect(() => {
+    const targetX = activeIndex * tabWidth;
+    Animated.spring(slideX, {
+      toValue: targetX,
+      damping: 18,
+      stiffness: 200,
+      mass: 0.8,
+      useNativeDriver: false,
+    }).start();
+  }, [activeIndex, tabWidth]);
 
   const animatePill = (toOpacity: number, toScale: number) => {
     Animated.parallel([
       Animated.timing(pillOpacity, {
         toValue: toOpacity,
-        duration: ANIM_DURATION,
+        duration: 250,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
       Animated.timing(pillScale, {
         toValue: toScale,
-        duration: ANIM_DURATION,
+        duration: 250,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
@@ -130,12 +138,16 @@ export function LiquidGlassTabBar({ state, descriptors, navigation }: LiquidGlas
       }
       navigation.navigate(tabKey);
     },
-    [navigation]
+    [navigation],
   );
+
+  const onPillLayout = (e: LayoutChangeEvent) => {
+    setPillWidth(e.nativeEvent.layout.width);
+  };
 
   return (
     <View style={styles.container} pointerEvents="box-none">
-      {/* ─── Pill (liquid glass) ──── */}
+      {/* ─── Pill (dark translucent) ──── */}
       <Animated.View
         style={[
           styles.pillAnimated,
@@ -143,8 +155,20 @@ export function LiquidGlassTabBar({ state, descriptors, navigation }: LiquidGlas
         ]}
         pointerEvents={expanded ? 'none' : 'auto'}
       >
-        <GlassWrapper style={styles.pillGlass}>
-          <View style={styles.pillInner}>
+        <View style={styles.pillBackground}>
+          {/* ── Sliding highlight indicator ── */}
+          <Animated.View
+            style={[
+              styles.slider,
+              {
+                width: tabWidth,
+                transform: [{ translateX: slideX }],
+              },
+            ]}
+          />
+
+          {/* ── Tab items ── */}
+          <View style={styles.pillInner} onLayout={onPillLayout}>
             {PILL_TABS.map((tab) => {
               const routeIndex = routes.findIndex((r: any) => r.name === tab.key);
               const isFocused = state.index === routeIndex;
@@ -155,10 +179,7 @@ export function LiquidGlassTabBar({ state, descriptors, navigation }: LiquidGlas
                   key={tab.key}
                   onPress={() => handleTabPress(tab.key)}
                   activeOpacity={0.7}
-                  style={[
-                    styles.tabItem,
-                    isFocused && styles.tabItemActive,
-                  ]}
+                  style={styles.tabItem}
                   accessibilityRole="button"
                   accessibilityLabel={tab.label}
                   accessibilityState={{ selected: isFocused }}
@@ -168,13 +189,13 @@ export function LiquidGlassTabBar({ state, descriptors, navigation }: LiquidGlas
               );
             })}
           </View>
-        </GlassWrapper>
+        </View>
       </Animated.View>
 
       {/* ─── Circle (camera / back) ──── */}
-      <GlassWrapper
+      <View
         style={[
-          styles.circleGlass,
+          styles.circle,
           expanded ? styles.circleActive : styles.circleDefault,
         ]}
       >
@@ -191,7 +212,7 @@ export function LiquidGlassTabBar({ state, descriptors, navigation }: LiquidGlas
             <Camera size={ICON_SIZE} color="#ffffff" />
           )}
         </TouchableOpacity>
-      </GlassWrapper>
+      </View>
     </View>
   );
 }
@@ -216,48 +237,61 @@ const styles = StyleSheet.create({
     flex: 1,
     maxWidth: SCREEN_WIDTH * 0.72,
   },
-  pillGlass: {
+  pillBackground: {
     borderRadius: PILL_RADIUS,
     overflow: 'hidden',
+    backgroundColor: 'rgba(20, 20, 22, 0.88)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.10)',
   },
   pillInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-evenly',
     height: PILL_HEIGHT,
+    position: 'relative',
   },
+
+  // ── Sliding highlight ──
+  slider: {
+    position: 'absolute',
+    top: (PILL_HEIGHT - INDICATOR_HEIGHT) / 2,
+    left: 0,
+    height: INDICATOR_HEIGHT,
+    borderRadius: INDICATOR_RADIUS,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    // Subtle inner glow
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+
+  // ── Tab item ──
   tabItem: {
+    flex: 1,
     height: TAB_MIN_TOUCH,
-    width: TAB_MIN_TOUCH,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: TAB_MIN_TOUCH / 2,
-  },
-  tabItemActive: {
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    zIndex: 1,
   },
 
   // ── Circle ──
-  circleGlass: {
+  circle: {
     width: CIRCLE_SIZE,
     height: CIRCLE_SIZE,
     borderRadius: CIRCLE_SIZE / 2,
-    overflow: 'hidden',
+    backgroundColor: 'rgba(20, 20, 22, 0.88)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.10)',
   },
   circleDefault: {},
-  circleActive: {},
+  circleActive: {
+    backgroundColor: 'rgba(201, 168, 76, 0.3)',
+    borderColor: 'rgba(201, 168, 76, 0.5)',
+  },
   circleButton: {
     width: CIRCLE_SIZE,
     height: CIRCLE_SIZE,
     borderRadius: CIRCLE_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-
-  // ── Fallback (pre-iOS 26 / Android) ──
-  solidFallback: {
-    backgroundColor: 'rgba(30,30,30,0.88)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.12)',
   },
 });

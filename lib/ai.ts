@@ -416,8 +416,9 @@ async function callOpenRouter(
 //
 // All requests go through the queue to avoid rate-limit blowups (Gemini 15 RPM).
 // Each provider has built-in retry with exponential backoff.
+// Exported so quiz.tsx and other callers can use the unified pipeline.
 
-async function callAI(
+export async function callAI(
   messages: OpenRouterMessage[],
   options: {
     jsonMode?: boolean;

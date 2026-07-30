@@ -6,7 +6,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft, Brain, Zap, Clock, Star, RefreshCw, AlertCircle } from 'lucide-react-native';
-import { OPENROUTER_API_URL, OPENROUTER_API_KEY, TEXT_MODELS } from '@/lib/ai';
+import { callAI } from '@/lib/ai';
 
 const { width } = Dimensions.get('window');
 
@@ -93,91 +93,56 @@ Respond ONLY with a valid JSON array. No markdown fences, no explanation, just t
   }
 ]`;
 
-  for (const model of TEXT_MODELS) {
-    try {
-      console.log(`[QUIZ] Trying ${model} for ${count} questions...`);
+  const raw = await callAI(
+    [
+      { role: 'system', content: systemPrompt },
+      {
+        role: 'user',
+        content: `Generate ${count} ${mode.id}-level quiz questions about world monuments and architecture. Return ONLY the JSON array, nothing else.`,
+      },
+    ],
+    { jsonMode: false, maxTokens: count * 200 },
+  );
 
-      const response = await fetch(OPENROUTER_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-          'HTTP-Referer': 'https://relica.expo.app',
-          'X-Title': 'RELICA',
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            {
-              role: 'user',
-              content: `Generate ${count} ${mode.id}-level quiz questions about world monuments and architecture. Return ONLY the JSON array, nothing else.`,
-            },
-          ],
-          max_tokens: count * 200,
-          temperature: 0.9,
-        }),
-      });
+  // Strip  blocks and markdown fences
+  const cleaned = raw
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim();
 
-      if (!response.ok) {
-        console.warn(`[QUIZ] ${model} HTTP ${response.status}`);
-        continue;
-      }
+  let parsed: Question[] | null = null;
 
-      const data = await response.json();
-      const raw: string = data.choices?.[0]?.message?.content ?? '';
-
-      // Strip <think> blocks (some models emit these) and markdown fences
-      const cleaned = raw
-        .replace(/<think>[\s\S]*?<\/think>/gi, '')
-        .replace(/^```json\s*/i, '')
-        .replace(/^```\s*/i, '')
-        .replace(/```\s*$/i, '')
-        .trim();
-
-      let parsed: Question[] | null = null;
-
-      try {
-        const obj = JSON.parse(cleaned);
-        // Handle both array and { questions: [...] } shapes
-        parsed = Array.isArray(obj) ? obj : (obj.questions ?? null);
-      } catch {
-        // Try to extract array from anywhere in the string
-        const match = cleaned.match(/\[[\s\S]*\]/);
-        if (match) {
-          try { parsed = JSON.parse(match[0]); } catch { /* skip */ }
-        }
-      }
-
-      if (!parsed) {
-        console.warn(`[QUIZ] ${model} parse failed`);
-        continue;
-      }
-
-      // Validate each entry
-      const valid = parsed.filter(q =>
-        typeof q.q === 'string' &&
-        q.q.length > 5 &&
-        Array.isArray(q.options) &&
-        q.options.length === 4 &&
-        typeof q.correct === 'number' &&
-        q.correct >= 0 &&
-        q.correct <= 3
-      );
-
-      const minRequired = Math.floor(count * 0.7);
-      if (valid.length >= minRequired) {
-        console.log(`[QUIZ] ✓ ${model} → ${valid.length} valid questions`);
-        return valid.slice(0, count);
-      }
-
-      console.warn(`[QUIZ] ${model} only gave ${valid.length} valid questions (need ${minRequired})`);
-    } catch (err: any) {
-      console.error(`[QUIZ] ${model} error:`, err.message);
+  try {
+    const obj = JSON.parse(cleaned);
+    parsed = Array.isArray(obj) ? obj : (obj.questions ?? null);
+  } catch {
+    const match = cleaned.match(/\[[\s\S]*\]/);
+    if (match) {
+      try { parsed = JSON.parse(match[0]); } catch { /* skip */ }
     }
   }
 
-  throw new Error('All AI models failed. Please check your connection and try again.');
+  if (!parsed) throw new Error('Failed to parse quiz questions. Please try again.');
+
+  const valid = parsed.filter(q =>
+    typeof q.q === 'string' &&
+    q.q.length > 5 &&
+    Array.isArray(q.options) &&
+    q.options.length === 4 &&
+    typeof q.correct === 'number' &&
+    q.correct >= 0 &&
+    q.correct <= 3
+  );
+
+  const minRequired = Math.floor(count * 0.7);
+  if (valid.length < minRequired) {
+    throw new Error(`Only ${valid.length} valid questions generated. Please try again.`);
+  }
+
+  console.log(`[QUIZ] ✓ Generated ${valid.length} valid questions via callAI`);
+  return valid.slice(0, count);
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
